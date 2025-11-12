@@ -5,7 +5,6 @@
     "config_flow": true,
     "dependencies": [],
     "documentation": "https://github.com/VaclavSchubert/photovoltaic_manager",
-    "integration_type": "service",
     "iot_class": "assumed_state",
     "requirements": [],
     "version": "0.1.0"
