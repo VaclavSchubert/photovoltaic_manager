@@ -37,9 +37,7 @@ class ExampleCoordinator(DataUpdateCoordinator):
         """Initialize coordinator."""
 
         # Set variables from values entered in config flow setup
-        self.host = config_entry.data[CONF_HOST]
-        self.user = config_entry.data[CONF_USERNAME]
-        self.pwd = config_entry.data[CONF_PASSWORD]
+        # self.host = config_entry.data[CONF_HOST]
 
         # set variables from options.  You need a default here incase options have not been set
         self.poll_interval = config_entry.options.get(
@@ -59,7 +57,6 @@ class ExampleCoordinator(DataUpdateCoordinator):
         )
 
         # Initialise your api here
-        self.api = API(host=self.host, user=self.user, pwd=self.pwd)
 
     async def async_update_data(self):
         """Fetch data from API endpoint.
@@ -68,9 +65,7 @@ class ExampleCoordinator(DataUpdateCoordinator):
         so entities can quickly look up their data.
         """
         try:
-            if not self.api.connected:
-                await self.hass.async_add_executor_job(self.api.connect)
-            devices = await self.hass.async_add_executor_job(self.api.get_devices)
+            pass
         except APIAuthError as err:
             _LOGGER.error(err)
             raise UpdateFailed(err) from err
@@ -79,7 +74,6 @@ class ExampleCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error communicating with API: {err}") from err
 
         # What is returned here is stored in self.data by the DataUpdateCoordinator
-        return ExampleAPIData(self.api.controller_name, devices)
 
     def get_device_by_id(
         self, device_type: DeviceType, device_id: int

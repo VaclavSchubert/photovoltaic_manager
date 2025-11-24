@@ -7,17 +7,16 @@ from dataclasses import dataclass
 import logging
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.device_registry import DeviceEntry
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from .const import PLATFORMS
 from .coordinator import ExampleCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SENSOR]
 
 type MyConfigEntry = ConfigEntry[RuntimeData]
 
@@ -42,8 +41,8 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: MyConfigEntry) ->
 
     # Test to see if api initialised correctly, else raise ConfigNotReady to make HA retry setup
     # TODO: Change this to match how your api will know if connected or successful update
-    if not coordinator.api.connected:
-        raise ConfigEntryNotReady
+    #if not coordinator.api.connected:
+    #    raise ConfigEntryNotReady
 
     # Initialise a listener for config flow options changes.
     # This will be removed automatically if the integraiton is unloaded.
@@ -60,7 +59,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: MyConfigEntry) ->
 
     # Setup platforms (based on the list of entity types in PLATFORMS defined above)
     # This calls the async_setup method in each of your entity type files.
-    await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
+    #await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
 
     # Return true to denote a successful setup.
     return True

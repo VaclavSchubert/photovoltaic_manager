@@ -18,9 +18,11 @@
         "pv_production_forecast_today": "Forecast of Today's PV Production",
         "spot_market_price_today": "Today's Electricity Spot Market Price",
         "household_consumption": "Household Consumption Statistics",
-        "household_consumption_2": "Second Household Consumption (Optional)",
-        "inverter_export": "Inverter Export Monitoring",
-        "inverter_import": "Inverter Import Monitoring",
+        "second_home_api_key": "Shelly Cloud API key (Optional)",
+        "second_home_device_id": "Shelly Cloud electrostat device ID (Optional)",
+        "second_home_server": "Shelly Cloud server (Optional)",
+        "inverter_export": "Inverter Export Control",
+        "inverter_import": "Inverter Import Control",
         "consumption_forecast_tomorrow": "Next-Day Consumption Forecast"
         }
       },
@@ -30,9 +32,11 @@
           "pv_production_forecast_today": "Forecast of Today's PV Production",
           "spot_market_price_today": "Today's Electricity Spot Market Price",
           "household_consumption": "Household Consumption Statistics",
-          "household_consumption_2": "Second Household Consumption (Optional)",
-          "inverter_export": "Inverter Export Monitoring",
-          "inverter_import": "Inverter Import Monitoring",
+          "second_home_api_key": "Shelly Cloud API key (Optional)",
+          "second_home_device_id": "Shelly Cloud electrostat device ID (Optional)",
+          "second_home_server": "Shelly Cloud server (Optional)",
+          "inverter_export": "Inverter Export Control",
+          "inverter_import": "Inverter Import Control",
           "consumption_forecast_tomorrow": "Next-Day Consumption Forecast"
         }
       }

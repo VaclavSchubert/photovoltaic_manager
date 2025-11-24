@@ -5,7 +5,8 @@
     "config_flow": true,
     "dependencies": ["cz_energy_spot_prices", "solax_modbus"],
     "documentation": "https://github.com/VaclavSchubert/photovoltaic_manager",
-    "iot_class": "assumed_state",
+    "integration_type": "service",
+    "iot_class": "cloud_polling",
     "requirements": [],
     "version": "0.1.0"
 }
