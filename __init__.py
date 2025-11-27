@@ -4,12 +4,19 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 import logging
+import sys
+from typing import Literal
+import zoneinfo
 
+from homeassistant.components.recorder import statistics
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import recorder
 from homeassistant.helpers.device_registry import DeviceEntry
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import PLATFORMS
@@ -28,6 +35,117 @@ class RuntimeData:
     coordinator: DataUpdateCoordinator
 
 
+async def async_load_predictor(hass: HomeAssistant, config_entry: MyConfigEntry):
+    """Load predictor data."""
+
+    types: set[Literal["last_reset", "max", "mean", "min", "state", "sum"]] = {"mean"}
+
+    states = await recorder.get_instance(hass).async_add_executor_job(
+        statistics.get_last_statistics,
+        hass,
+        sys.maxsize,
+        config_entry.data["household_consumption"],
+        False,
+        types,
+    )
+
+    data = {
+        "summer": {"values": [0 for _ in range(24)], "count": 0},
+        "fall": {"values": [0 for _ in range(24)], "count": 0},
+        "winter": {"values": [0 for _ in range(24)], "count": 0},
+        "spring": {"values": [0 for _ in range(24)], "count": 0},
+    }
+
+    latitude = hass.config.latitude
+    hemisphere = "northern" if latitude >= 0 else "southern"
+
+    task = iter(states.values())
+    iterable = iter(next(task, []))
+    last_record = 0.0
+
+    while True:
+        try:
+            item = next(iterable)
+            epoch_seconds = item["start"]
+            hour = datetime.fromtimestamp(
+                epoch_seconds, zoneinfo.ZoneInfo(hass.config.time_zone)
+            ).hour
+            season = await get_season_from_epoch(epoch_seconds, hemisphere)
+            if last_record - epoch_seconds > 3600:
+                diff_hours = int((last_record - epoch_seconds) / 3600) % 24
+                if diff_hours == 0:
+                    last_record = item["start"]
+                    continue
+
+                for hr in range(diff_hours):
+                    fill_hour = hour + hr + 1 % 24
+                    data[season]["values"][fill_hour] += data[season]["values"][
+                        fill_hour
+                    ] / (data[season]["count"] // 24)
+                    data[season]["count"] += 1
+
+            data[season]["values"][hour] += item["mean"]
+            last_record = item["start"]
+        except StopIteration:
+            break
+        data[season]["count"] += 1
+
+    for info in data.values():
+        info["count"] = info["count"] // 24  # each hour counted separately
+
+    for info in data.values():
+        count = info["count"]
+        if count > 0:
+            info["values"] = [v / count for v in info["values"]]
+    return data
+
+
+async def update_predictions(hass: HomeAssistant, curve, new_input, season):
+    """Update stored predictions."""
+    store = hass.data[curve]["store"]
+    hass.data[curve]["data"][season]["values"] = (
+        hass.data[curve]["data"][season]["values"]
+        * hass.data[curve]["data"][season]["count"]
+        + new_input
+    ) / (hass.data[curve]["data"][season]["count"] + 1)
+    hass.data[curve]["data"][season]["count"] += 1
+    await store.async_save(hass.data[curve]["data"])
+
+
+async def async_load_pv_predictor(hass: HomeAssistant, config_entry: MyConfigEntry):
+    """Load PV predictor data."""
+
+    latitude = hass.config.latitude
+    hemisphere = "northern" if latitude >= 0 else "southern"
+    season = await get_season_from_epoch(epoch_seconds, hemisphere)
+
+
+async def get_season_from_epoch(seconds, hemisphere="northern"):
+    """Get season from epoch time."""
+    month = datetime.fromtimestamp(seconds).month
+
+    if hemisphere == "southern":
+        # Southern seasons are opposite
+        if month in (12, 1, 2):
+            return "summer"
+        elif month in (3, 4, 5):
+            return "fall"
+        elif month in (6, 7, 8):
+            return "winter"
+        else:
+            return "spring"
+    else:
+        # Northern hemisphere
+        if month in (12, 1, 2):
+            return "winter"
+        elif month in (3, 4, 5):
+            return "spring"
+        elif month in (6, 7, 8):
+            return "summer"
+        else:
+            return "fall"
+
+
 async def async_setup_entry(hass: HomeAssistant, config_entry: MyConfigEntry) -> bool:
     """Set up Example Integration from a config entry."""
 
@@ -41,17 +159,34 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: MyConfigEntry) ->
 
     # Test to see if api initialised correctly, else raise ConfigNotReady to make HA retry setup
     # TODO: Change this to match how your api will know if connected or successful update
-    #if not coordinator.api.connected:
+    # if not coordinator.api.connected:
     #    raise ConfigEntryNotReady
 
-    # Initialise a listener for config flow options changes.
-    # This will be removed automatically if the integraiton is unloaded.
-    # See config_flow for defining an options setting that shows up as configure
-    # on the integration.
-    # If you do not want any config flow options, no need to have listener.
-    config_entry.async_on_unload(
-        config_entry.add_update_listener(_async_update_listener)
-    )
+    hass.data.setdefault("house_load_predictor", {})
+    load_store = Store(hass, 1, "house_load_predictor")
+
+    saved = await load_store.async_load() or {}
+
+    hass.data["house_load_predictor"]["store"] = load_store
+
+    if saved == {}:
+        saved = await async_load_predictor(hass, config_entry)
+
+    hass.data["house_load_predictor"]["data"] = saved
+    await load_store.async_save(saved)
+
+    hass.data.setdefault("pv_production_correction", {})
+    pv_store = Store(hass, 1, "pv_production_correction")
+
+    saved = await pv_store.async_load() or {}
+
+    hass.data["pv_production_correction"]["store"] = pv_store
+
+    if saved == {}:
+        pass  # saved = await async_load_pv_predictor(hass, config_entry)
+
+    hass.data["pv_production_correction"]["data"] = saved
+    await load_store.async_save(saved)
 
     # Add the coordinator and update listener to config runtime data to make
     # accessible throughout your integration
@@ -59,16 +194,10 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: MyConfigEntry) ->
 
     # Setup platforms (based on the list of entity types in PLATFORMS defined above)
     # This calls the async_setup method in each of your entity type files.
-    #await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
+    # await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
 
     # Return true to denote a successful setup.
     return True
-
-
-async def _async_update_listener(hass: HomeAssistant, config_entry):
-    """Handle config options update."""
-    # Reload the integration when the options change.
-    await hass.config_entries.async_reload(config_entry.entry_id)
 
 
 async def async_remove_config_entry_device(

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 import logging
-from typing import Any
+from typing import Any, Literal
 
 import requests
 import voluptuous as vol
 
-from homeassistant.components.recorder.history import get_significant_states
+from homeassistant.components import recorder
+from homeassistant.components.recorder import statistics
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
@@ -62,7 +63,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     return {"title": "Example Integration"}
 
 
-class ExampleConfigFlow(ConfigFlow, domain=DOMAIN):
+class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Example Integration."""
 
     VERSION = 1
@@ -81,24 +82,6 @@ class ExampleConfigFlow(ConfigFlow, domain=DOMAIN):
                 # Validate that the setup data is valid and if not handle errors.
                 # The errors["base"] values match the values in your strings.json and translation files.
                 info = await validate_input(self.hass, user_input)
-
-                end_time = dt_util.now()
-                start_time = end_time - timedelta(hours=24)
-                _LOGGER.warning(
-                    {start_time, end_time, user_input["real_pv_production"]}
-                )
-
-                states = await self.hass.async_add_executor_job(
-                    get_significant_states,
-                    self.hass,
-                    start_time,
-                    end_time,
-                    [user_input["real_pv_production"]],
-                )
-
-                for state in states.values():
-                    for item in state:
-                        _LOGGER.warning({item.last_updated, item.state})
 
                 self.hass.async_add_executor_job(self.fetch_demo)
 
@@ -139,16 +122,10 @@ class ExampleConfigFlow(ConfigFlow, domain=DOMAIN):
 
         url = f"https://{host}/v2/devices/api/get?auth_key={auth_key}"
 
-        # JSON payload from your curl command
-        payload = {"ids": device_ids, "select": ["status", "settings"]}
-
-        # Headers
+        payload = {"ids": device_ids, "select": ["status"]}
         headers = {"Content-Type": "application/json"}
+        response = requests.post(url, json=payload, headers=headers, timeout=3)
 
-        # Make POST request
-        response = requests.post(url, json=payload, headers=headers)
-
-        # Print status and response
         _LOGGER.warning(response.json())
 
     async def async_step_reconfigure(
