@@ -2,23 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
 import logging
-from typing import Any, Literal
+from typing import Any
 
 import requests
 import voluptuous as vol
 
-from homeassistant.components import recorder
-from homeassistant.components.recorder import statistics
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
-import homeassistant.util.dt as dt_util
 
 from . import const
-from .api import API, APIAuthError, APIConnectionError
 from .const import DOMAIN
 from .secret import api_auth_key, device_ids, server_host
 
@@ -51,16 +46,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     #     your_validate_func, data[CONF_USERNAME], data[CONF_PASSWORD]
     # )
 
-    try:
-        # await hass.async_add_executor_job(api.connect)
-        # If you cannot connect, raise CannotConnect
-        # If the authentication is wrong, raise InvalidAuth
-        pass
-    except APIAuthError as err:
-        raise InvalidAuth from err
-    except APIConnectionError as err:
-        raise CannotConnect from err
-    return {"title": "Example Integration"}
+    return {"title": "Energy Management Integration"}
 
 
 class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):

@@ -3,11 +3,9 @@
 from homeassistant.const import Platform
 
 DOMAIN = "photovoltaic_manager"
-# Default values
-
 
 # Platforms (if your integration has multiple platforms like sensor, switch)
-PLATFORMS = [Platform.SENSOR, Platform.SWITCH]
+PLATFORMS = [Platform.SENSOR]
 
 DEFAULT_SCAN_INTERVAL = 14
 MIN_SCAN_INTERVAL = 7

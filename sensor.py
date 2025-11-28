@@ -8,14 +8,13 @@ from homeassistant.components.sensor import (
     SensorStateClass,
     dataclass,
 )
-from homeassistant.const import UnitOfPower, UnitOfTemperature
+from homeassistant.const import UnitOfPower
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import MyConfigEntry
-from .api import DeviceType
 from .const import DOMAIN
 from .coordinator import SecondHouseholdCoordinator
 
@@ -28,7 +27,7 @@ class Device:
 
     device_id: int
     device_unique_id: str
-    device_type: DeviceType
+    device_type: str
     name: str
     state: int | bool
 
