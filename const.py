@@ -9,6 +9,7 @@ PLATFORMS = [Platform.SENSOR]
 
 DEFAULT_SCAN_INTERVAL = 14
 MIN_SCAN_INTERVAL = 7
+DEFAULT_PLAN_INTERVAL = 3600  # 1 hour
 
 
 # Required configuration keys

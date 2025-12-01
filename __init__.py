@@ -20,7 +20,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import PLATFORMS
-from .coordinator import SecondHouseholdCoordinator
+from .coordinator import EnergyManagementCoordinator, SecondHouseholdCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,6 +33,7 @@ class RuntimeData:
     """Class to hold your data."""
 
     coordinator: DataUpdateCoordinator
+    scheduler: DataUpdateCoordinator
 
 
 async def async_load_predictor(hass: HomeAssistant, config_entry: MyConfigEntry):
@@ -269,14 +270,6 @@ async def get_season_from_epoch(seconds, hemisphere="northern"):
 async def async_setup_entry(hass: HomeAssistant, config_entry: MyConfigEntry) -> bool:
     """Set up Example Integration from a config entry."""
 
-    # Initialise the coordinator that manages data updates from your api.
-    # This is defined in coordinator.py
-    coordinator = SecondHouseholdCoordinator(hass, config_entry)
-
-    # Perform an initial data load from api.
-    # async_config_entry_first_refresh() is special in that it does not log errors if it fails
-    await coordinator.async_config_entry_first_refresh()
-
     # Test to see if api initialised correctly, else raise ConfigNotReady to make HA retry setup
     # TODO: Change this to match how your api will know if connected or successful update
     # if not coordinator.api.connected:
@@ -308,13 +301,23 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: MyConfigEntry) ->
     hass.data["pv_production_correction"]["data"] = saved
     await load_store.async_save(saved)
 
+    # Initialise the coordinator that manages data updates from your api.
+    # This is defined in coordinator.py
+    coordinator = SecondHouseholdCoordinator(hass, config_entry)
+    scheduler = EnergyManagementCoordinator(hass, config_entry)
+
+    # Perform an initial data load from api.
+    # async_config_entry_first_refresh() is special in that it does not log errors if it fails
+    await coordinator.async_config_entry_first_refresh()
+    await scheduler.async_config_entry_first_refresh()
+
     # Add the coordinator and update listener to config runtime data to make
     # accessible throughout your integration
-    config_entry.runtime_data = RuntimeData(coordinator)
+    config_entry.runtime_data = RuntimeData(coordinator, scheduler)
 
     # Setup platforms (based on the list of entity types in PLATFORMS defined above)
     # This calls the async_setup method in each of your entity type files.
-    # await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
+    await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
 
     # Return true to denote a successful setup.
     return True

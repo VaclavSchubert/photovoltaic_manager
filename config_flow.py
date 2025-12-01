@@ -38,13 +38,13 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
     Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
     """
-    # TODO validate the data can be used to set up a connection.
+    # TODO: dropdown has entities with triggerable options only
 
-    # If your PyPI package is not built with async, pass your methods
-    # to the executor:
-    # await hass.async_add_executor_job(
-    #     your_validate_func, data[CONF_USERNAME], data[CONF_PASSWORD]
-    # )
+    # TODO: shelly request returns 200 ok
+
+    # TODO: solax remotecontrol is in grid control mode
+
+    # TODO: solax entities are available
 
     return {"title": "Energy Management Integration"}
 
@@ -94,25 +94,14 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
             if entry.entity_id.startswith("sensor.")
         ]
 
+        # TODO: change schema to match entries - expandable list of appliances, ...
+
         schema = vol.Schema(
             {vol.Required(entity): vol.In(sensor_entities) for entity in entries}
         )
 
         # Show initial form.
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
-
-    def fetch_demo(self):
-        "Demo."
-        host = server_host
-        auth_key = api_auth_key
-
-        url = f"https://{host}/v2/devices/api/get?auth_key={auth_key}"
-
-        payload = {"ids": device_ids, "select": ["status"]}
-        headers = {"Content-Type": "application/json"}
-        response = requests.post(url, json=payload, headers=headers, timeout=3)
-
-        _LOGGER.warning(response.json())
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
@@ -133,10 +122,7 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 await validate_input(self.hass, user_input)
-            except CannotConnect:
-                errors["base"] = "cannot_connect"
-            except InvalidAuth:
-                errors["base"] = "invalid_auth"
+            # TODO: create exceptions
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"

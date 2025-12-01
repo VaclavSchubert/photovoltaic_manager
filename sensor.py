@@ -21,6 +21,7 @@ from .coordinator import SecondHouseholdCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 
+# TODO: change the Device class below to match the data structure returned by api
 @dataclass
 class Device:
     """API device."""
@@ -40,10 +41,6 @@ async def async_setup_entry(
     """Set up the Sensors."""
     # This gets the data update coordinator from the config entry runtime data as specified in your __init__.py
     coordinator: SecondHouseholdCoordinator = config_entry.runtime_data.coordinator
-
-    # Enumerate all the sensors in your data value from your DataUpdateCoordinator and add an instance of your sensor class
-    # to a list for each one.
-    # This maybe different in your specific case, depending on how your data is structured
 
     # Create the sensors.
     async_add_entities(
@@ -125,3 +122,7 @@ class SecondHouseholdConsumption(CoordinatorEntity, SensorEntity):
         # All entities must have a unique id.  Think carefully what you want this to be as
         # changing it later will cause HA to create new entities.
         return f"{DOMAIN}-{self.device.device_unique_id}"
+
+
+# TODO: sensor for corrected forecast based on statistics
+# TODO: sensor for houseload prediction
