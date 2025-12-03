@@ -16,7 +16,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import MyConfigEntry
 from .const import DOMAIN
-from .coordinator import SecondHouseholdCoordinator
+from .coordinator import EnergyManagementCoordinator, SecondHouseholdCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -125,4 +125,112 @@ class SecondHouseholdConsumption(CoordinatorEntity, SensorEntity):
 
 
 # TODO: sensor for corrected forecast based on statistics
+class CorrectedForecast(CoordinatorEntity, SensorEntity):
+    """Representation of a corrected forecast from Forecast.Solar integration."""
+
+    def __init__(
+        self,
+        coordinator: EnergyManagementCoordinator,
+    ) -> None:
+        """Initialize entity."""
+        super().__init__(coordinator)
+        self.state: float = 0.0
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Update sensor with latest data from coordinator."""
+        # This method is called by your DataUpdateCoordinator when a successful update runs.
+        self.state = self.coordinator.data.corrected_forecast
+        self.async_write_ha_state()
+
+    @property
+    def device_class(self) -> str:
+        """Return device class."""
+        # https://developers.home-assistant.io/docs/core/entity/sensor/#available-device-classes
+        return SensorDeviceClass.POWER
+
+    @property
+    def name(self) -> str:
+        """Return the name of the sensor."""
+        return "Corrected PV Production Forecast"
+
+    @property
+    def native_value(self) -> int | float:
+        """Return the state of the entity."""
+        # Using native value and native unit of measurement, allows you to change units
+        # in Lovelace and HA will automatically calculate the correct value.
+        return float(self.state)
+
+    @property
+    def native_unit_of_measurement(self) -> str | None:
+        """Return unit of temperature."""
+        return UnitOfPower.WATT
+
+    @property
+    def state_class(self) -> str | None:
+        """Return state class."""
+        # https://developers.home-assistant.io/docs/core/entity/sensor/#available-state-classes
+        return SensorStateClass.MEASUREMENT
+
+    @property
+    def unique_id(self) -> str:
+        """Return unique id."""
+        # All entities must have a unique id.  Think carefully what you want this to be as
+        # changing it later will cause HA to create new entities.
+        return f"{DOMAIN}-{self.name.lower().replace(' ', '_')}"
+
+
 # TODO: sensor for houseload prediction
+class HouseloadPrediction(CoordinatorEntity, SensorEntity):
+    """Representation of a corrected forecast from Forecast.Solar integration."""
+
+    def __init__(
+        self,
+        coordinator: EnergyManagementCoordinator,
+    ) -> None:
+        """Initialize entity."""
+        super().__init__(coordinator)
+        self.state: float = 0.0
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Update sensor with latest data from coordinator."""
+        # This method is called by your DataUpdateCoordinator when a successful update runs.
+        self.state = self.coordinator.data.houseload_prediction
+        self.async_write_ha_state()
+
+    @property
+    def device_class(self) -> str:
+        """Return device class."""
+        # https://developers.home-assistant.io/docs/core/entity/sensor/#available-device-classes
+        return SensorDeviceClass.POWER
+
+    @property
+    def name(self) -> str:
+        """Return the name of the sensor."""
+        return "Houseload Prediction"
+
+    @property
+    def native_value(self) -> int | float:
+        """Return the state of the entity."""
+        # Using native value and native unit of measurement, allows you to change units
+        # in Lovelace and HA will automatically calculate the correct value.
+        return float(self.state)
+
+    @property
+    def native_unit_of_measurement(self) -> str | None:
+        """Return unit of temperature."""
+        return UnitOfPower.WATT
+
+    @property
+    def state_class(self) -> str | None:
+        """Return state class."""
+        # https://developers.home-assistant.io/docs/core/entity/sensor/#available-state-classes
+        return SensorStateClass.MEASUREMENT
+
+    @property
+    def unique_id(self) -> str:
+        """Return unique id."""
+        # All entities must have a unique id.  Think carefully what you want this to be as
+        # changing it later will cause HA to create new entities.
+        return f"{DOMAIN}-{self.name.lower().replace(' ', '_')}"
