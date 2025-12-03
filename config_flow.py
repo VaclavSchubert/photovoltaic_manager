@@ -5,30 +5,25 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import requests
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
+import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers.selector import selector
 
-from . import const
-from .const import DOMAIN
-from .secret import api_auth_key, device_ids, server_host
-
-entries = [
-    const.CONF_REAL_PV_PRODUCTION,
-    const.CONF_PV_PRODUCTION_FORECAST_TODAY,
-    const.CONF_HOUSEHOLD_CONSUMPTION,
-    const.CONF_CONSUMPTION_FORECAST_TOMORROW,
-    const.CONF_INVERTER_EXPORT,
-    const.CONF_INVERTER_IMPORT,
-    const.CONF_SPOT_MARKET_PRICE_TODAY,
-    const.CONF_SECOND_HOME_SERVER,
-    const.CONF_SECOND_HOME_API_KEY,
-    const.CONF_SECOND_HOME_DEVICE_ID,
-]
+from .const import (
+    CONF_APPLIANCES_TO_CONTROL,
+    CONF_BATTERY_CAPACITY,
+    CONF_MAX_SOC,
+    CONF_MIN_SOC,
+    CONF_SECOND_HOME_API_KEY,
+    CONF_SECOND_HOME_DEVICE_ID,
+    CONF_SECOND_HOME_SERVER,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -69,8 +64,6 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                 # The errors["base"] values match the values in your strings.json and translation files.
                 info = await validate_input(self.hass, user_input)
 
-                self.hass.async_add_executor_job(self.fetch_demo)
-
             except CannotConnect:
                 errors["base"] = "cannot_connect"
             except InvalidAuth:
@@ -85,19 +78,23 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(title=info["title"], data=user_input)
 
-        entity_registry = er.async_get(self.hass)
-
-        # Filter for sensor entities
-        sensor_entities = [
-            entry.entity_id
-            for entry in entity_registry.entities.values()
-            if entry.entity_id.startswith("sensor.")
-        ]
-
-        # TODO: change schema to match entries - expandable list of appliances, ...
-
         schema = vol.Schema(
-            {vol.Required(entity): vol.In(sensor_entities) for entity in entries}
+            {
+                vol.Required(CONF_MIN_SOC): vol.Coerce(int),
+                vol.Required(CONF_MAX_SOC): vol.Coerce(int),
+                vol.Required(CONF_BATTERY_CAPACITY): vol.Coerce(float),
+                vol.Required(CONF_APPLIANCES_TO_CONTROL): selector(
+                    {
+                        "entity": {
+                            "domain": ["switch", "relay", "climate"],
+                            "multiple": True,
+                        }
+                    }
+                ),
+                vol.Optional(CONF_SECOND_HOME_SERVER): cv.string,
+                vol.Optional(CONF_SECOND_HOME_API_KEY): cv.string,
+                vol.Optional(CONF_SECOND_HOME_DEVICE_ID): cv.string,
+            }
         )
 
         # Show initial form.
@@ -134,21 +131,42 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                     reason="reconfigure_successful",
                 )
 
-        entity_registry = er.async_get(self.hass)
-
-        # Filter for sensor entities
-        sensor_entities = [
-            entry.entity_id
-            for entry in entity_registry.entities.values()
-            if entry.entity_id.startswith("sensor.")
-        ]
-
         schema = vol.Schema(
             {
-                vol.Required(entity, default=config_entry.data[entity]): vol.In(
-                    sensor_entities
-                )
-                for entity in entries
+                vol.Required(
+                    CONF_MIN_SOC,
+                    default=config_entry.data.get(CONF_MIN_SOC, 20),
+                ): vol.Coerce(int),
+                vol.Required(
+                    CONF_MAX_SOC, default=config_entry.data.get(CONF_MAX_SOC, 80)
+                ): vol.Coerce(int),
+                vol.Required(
+                    CONF_BATTERY_CAPACITY,
+                    default=config_entry.data.get(CONF_BATTERY_CAPACITY, 5.0),
+                ): vol.Coerce(float),
+                vol.Required(
+                    CONF_APPLIANCES_TO_CONTROL,
+                    default=config_entry.data.get(CONF_APPLIANCES_TO_CONTROL, []),
+                ): selector(
+                    {
+                        "entity": {
+                            "domain": ["switch", "relay", "climate"],
+                            "multiple": True,
+                        }
+                    }
+                ),
+                vol.Optional(
+                    CONF_SECOND_HOME_SERVER,
+                    default=config_entry.data.get(CONF_SECOND_HOME_SERVER, ""),
+                ): cv.string,
+                vol.Optional(
+                    CONF_SECOND_HOME_API_KEY,
+                    default=config_entry.data.get(CONF_SECOND_HOME_API_KEY, ""),
+                ): cv.string,
+                vol.Optional(
+                    CONF_SECOND_HOME_DEVICE_ID,
+                    default=config_entry.data.get(CONF_SECOND_HOME_DEVICE_ID, ""),
+                ): cv.string,
             }
         )
 

@@ -13,21 +13,32 @@ DEFAULT_PLAN_INTERVAL = 3600  # 1 hour
 
 
 # Required configuration keys
-CONF_REAL_PV_PRODUCTION = "real_pv_production"  # Statistika reálné výroby PV
-CONF_PV_PRODUCTION_FORECAST_TODAY = (
-    "pv_production_forecast_today"  # Statistika předpovědi dnešní výroby PV
-)
-CONF_SPOT_MARKET_PRICE_TODAY = "spot_market_price_today"  # Dnešní spotový trh elektřiny
-CONF_HOUSEHOLD_CONSUMPTION = "household_consumption"  # Statistika spotřeby v domácnosti
-CONF_INVERTER_EXPORT = "inverter_export"  # Kontrola exportu střídače
-CONF_INVERTER_IMPORT = "inverter_import"  # Kontrola importu střídače
-CONF_CONSUMPTION_FORECAST_TOMORROW = (
-    "consumption_forecast_tomorrow"  # Předpověď spotřeby dalšího dne
+# solax
+REAL_PV_PRODUCTION = "sensor.solax_pv_power_total"
+INVERTER_EXPORT_IMPORT = "button.solax_remotecontrol_trigger"
+HOUSEHOLD_CONSUMPTION = "sensor.solax_house_load"
+BATTERY_STATUS = "sensor.solax_battery_capacity"
+REMOTECONTROL_POWER = "number.solax_remotecontrol_active_power"
+REMOTECONTROL_MODE = "select.solax_remotecontrol_power_control"
+
+# forecast_solar
+PV_PRODUCTION_FORECAST_TODAY = "sensor.power_production_now"
+PV_PRODUCTION_FORECAST_TOMORROW = "sensor.power_production_next_24hours"
+
+# cz_energy_spot_prices
+SPOT_MARKET_TODAY_ORDER = "sensor.current_spot_electricity_hour_order"
+HAS_TOMORROW_SPOT_DATA = "binary_sensor.spot_electricity_has_tomorrow_data"
+SPOT_MARKET_TOMORROW_ORDER = "sensor.tomorrow_spot_electricity_hour_order"
+
+
+CONF_MIN_SOC = "min_soc"  # number input field
+CONF_MAX_SOC = "max_soc"  # number input field
+CONF_BATTERY_CAPACITY = "battery_capacity"  # number input field
+CONF_APPLIANCES_TO_CONTROL = (
+    "appliances_to_control"  # list of switches or relays to control
 )
 
-# Optional configuration key
-CONF_SECOND_HOME_SERVER = "second_home_server"
-CONF_SECOND_HOME_API_KEY = (
-    "second_home_api_key"  # Volitelné: real-time spotřeba druhé domácnosti
-)
-CONF_SECOND_HOME_DEVICE_ID = "second_home_device_id"
+# Optional configuration
+CONF_SECOND_HOME_SERVER = "second_home_server"  # input text field
+CONF_SECOND_HOME_API_KEY = "second_home_api_key"  # input text field
+CONF_SECOND_HOME_DEVICE_ID = "second_home_device_id"  # input text field
