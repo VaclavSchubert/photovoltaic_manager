@@ -41,10 +41,15 @@ async def async_setup_entry(
     """Set up the Sensors."""
     # This gets the data update coordinator from the config entry runtime data as specified in your __init__.py
     coordinator: SecondHouseholdCoordinator = config_entry.runtime_data.coordinator
+    scheduler: EnergyManagementCoordinator = config_entry.runtime_data.scheduler
 
     # Create the sensors.
     async_add_entities(
-        [SecondHouseholdConsumption(coordinator, coordinator.data.device)]
+        [
+            SecondHouseholdConsumption(coordinator, coordinator.data.device),
+            CorrectedForecast(scheduler),
+            HouseloadPrediction(scheduler),
+        ]
     )
 
 
@@ -124,7 +129,6 @@ class SecondHouseholdConsumption(CoordinatorEntity, SensorEntity):
         return f"{DOMAIN}-{self.device.device_unique_id}"
 
 
-# TODO: sensor for corrected forecast based on statistics
 class CorrectedForecast(CoordinatorEntity, SensorEntity):
     """Representation of a corrected forecast from Forecast.Solar integration."""
 
@@ -180,7 +184,6 @@ class CorrectedForecast(CoordinatorEntity, SensorEntity):
         return f"{DOMAIN}-{self.name.lower().replace(' ', '_')}"
 
 
-# TODO: sensor for houseload prediction
 class HouseloadPrediction(CoordinatorEntity, SensorEntity):
     """Representation of a corrected forecast from Forecast.Solar integration."""
 

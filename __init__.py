@@ -34,8 +34,8 @@ type MyConfigEntry = ConfigEntry[RuntimeData]
 class RuntimeData:
     """Class to hold your data."""
 
-    coordinator: DataUpdateCoordinator
-    scheduler: DataUpdateCoordinator
+    coordinator: SecondHouseholdCoordinator
+    scheduler: EnergyManagementCoordinator
 
 
 async def async_load_predictor(hass: HomeAssistant, config_entry: MyConfigEntry):
