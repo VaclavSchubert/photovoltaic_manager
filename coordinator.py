@@ -374,7 +374,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
         _LOGGER.warning(schedule)
         # What is returned here is stored in self.data by the DataUpdateCoordinator
-        return "Energy Management Coordinator", load[hour], solar[hour]
+        return "Energy Management Coordinator", load[0], solar[0]
 
 
 class SpotPriceArray:
