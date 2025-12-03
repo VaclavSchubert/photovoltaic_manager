@@ -10,6 +10,8 @@ import sys
 from typing import Literal
 import zoneinfo
 
+import numpy as np
+
 from homeassistant.components.recorder import statistics
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -51,10 +53,10 @@ async def async_load_predictor(hass: HomeAssistant, config_entry: MyConfigEntry)
     )
 
     data = {
-        "summer": {"values": [0 for _ in range(24)], "count": 0},
-        "fall": {"values": [0 for _ in range(24)], "count": 0},
-        "winter": {"values": [0 for _ in range(24)], "count": 0},
-        "spring": {"values": [0 for _ in range(24)], "count": 0},
+        "summer": {"values": [0 for _ in range(24)], "count": 0, "hours": 0},
+        "fall": {"values": [0 for _ in range(24)], "count": 0, "hours": 0},
+        "winter": {"values": [0 for _ in range(24)], "count": 0, "hours": 0},
+        "spring": {"values": [0 for _ in range(24)], "count": 0, "hours": 0},
     }
 
     latitude = hass.config.latitude
@@ -99,18 +101,6 @@ async def async_load_predictor(hass: HomeAssistant, config_entry: MyConfigEntry)
         if count > 0:
             info["values"] = [v / count for v in info["values"]]
     return data
-
-
-async def update_predictions(hass: HomeAssistant, curve, new_input, season):
-    """Update stored predictions."""
-    store = hass.data[curve]["store"]
-    hass.data[curve]["data"][season]["values"] = (
-        hass.data[curve]["data"][season]["values"]
-        * hass.data[curve]["data"][season]["count"]
-        + new_input
-    ) / (hass.data[curve]["data"][season]["count"] + 1)
-    hass.data[curve]["data"][season]["count"] += 1
-    await store.async_save(hass.data[curve]["data"])
 
 
 async def async_load_pv_predictor(hass: HomeAssistant, config_entry: MyConfigEntry):
@@ -186,10 +176,10 @@ async def async_load_pv_predictor(hass: HomeAssistant, config_entry: MyConfigEnt
     )
 
     predict_power_data = {
-        "summer": {"values": [0 for _ in range(24)], "count": 0},
-        "fall": {"values": [0 for _ in range(24)], "count": 0},
-        "winter": {"values": [0 for _ in range(24)], "count": 0},
-        "spring": {"values": [0 for _ in range(24)], "count": 0},
+        "summer": {"values": [0 for _ in range(24)], "count": 0, "hours": 0},
+        "fall": {"values": [0 for _ in range(24)], "count": 0, "hours": 0},
+        "winter": {"values": [0 for _ in range(24)], "count": 0, "hours": 0},
+        "spring": {"values": [0 for _ in range(24)], "count": 0, "hours": 0},
     }
 
     latitude = hass.config.latitude
@@ -236,7 +226,9 @@ async def async_load_pv_predictor(hass: HomeAssistant, config_entry: MyConfigEnt
             info["values"] = [v / count for v in info["values"]]
 
     for season, data in predict_power_data.items():
-        data["values"] = data["values"] - power_data[season]["values"]
+        data["values"] = list(
+            np.array(data["values"]) - np.array(power_data[season]["values"])
+        )
 
     return predict_power_data
 
