@@ -14,30 +14,26 @@
       "user": {
         "title": "Configure Photovoltaic Manager",
         "data": {
-        "real_pv_production": "Real PV Production Statistics",
-        "pv_production_forecast_today": "Forecast of Today's PV Production",
-        "spot_market_price_today": "Today's Electricity Spot Market Price",
-        "household_consumption": "Household Consumption Statistics",
-        "second_home_api_key": "Shelly Cloud API key (Optional)",
-        "second_home_device_id": "Shelly Cloud electrostat device ID (Optional)",
-        "second_home_server": "Shelly Cloud server (Optional)",
-        "inverter_export": "Inverter Export Control",
-        "inverter_import": "Inverter Import Control",
-        "consumption_forecast_tomorrow": "Next-Day Consumption Forecast"
+          "min_soc": "Minimum State of Charge",
+          "max_soc": "Maximum State of Charge",
+          "battery_capacity": "Battery Capacity (kWh)",
+          "appliances_to_control": "Appliances to Control",
+
+          "second_home_server": "Second Home Server (Optional)",
+          "second_home_api_key": "Second Home API Key (Optional)",
+          "second_home_device_id": "Second Home Device ID (Optional)"
         }
       },
       "reconfigure": {
         "data": {
-          "real_pv_production": "Real PV Production Statistics",
-          "pv_production_forecast_today": "Forecast of Today's PV Production",
-          "spot_market_price_today": "Today's Electricity Spot Market Price",
-          "household_consumption": "Household Consumption Statistics",
-          "second_home_api_key": "Shelly Cloud API key (Optional)",
-          "second_home_device_id": "Shelly Cloud electrostat device ID (Optional)",
-          "second_home_server": "Shelly Cloud server (Optional)",
-          "inverter_export": "Inverter Export Control",
-          "inverter_import": "Inverter Import Control",
-          "consumption_forecast_tomorrow": "Next-Day Consumption Forecast"
+          "min_soc": "Minimum State of Charge",
+          "max_soc": "Maximum State of Charge",
+          "battery_capacity": "Battery Capacity (kWh)",
+          "appliances_to_control": "Appliances to Control",
+
+          "second_home_server": "Second Home Server (Optional)",
+          "second_home_api_key": "Second Home API Key (Optional)",
+          "second_home_device_id": "Second Home Device ID (Optional)"
         }
       }
     }
