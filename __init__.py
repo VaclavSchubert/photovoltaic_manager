@@ -21,7 +21,12 @@ from homeassistant.helpers.device_registry import DeviceEntry
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .const import PLATFORMS
+from .const import (
+    HOUSEHOLD_CONSUMPTION,
+    PLATFORMS,
+    PV_PRODUCTION_FORECAST_TODAY,
+    REAL_PV_PRODUCTION,
+)
 from .coordinator import EnergyManagementCoordinator, SecondHouseholdCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -47,16 +52,16 @@ async def async_load_predictor(hass: HomeAssistant, config_entry: MyConfigEntry)
         statistics.get_last_statistics,
         hass,
         sys.maxsize,
-        config_entry.data["household_consumption"],
+        config_entry.data[HOUSEHOLD_CONSUMPTION],
         False,
         types,
     )
 
     data = {
-        "summer": {"values": [0 for _ in range(24)], "count": 0, "hours": 0},
-        "fall": {"values": [0 for _ in range(24)], "count": 0, "hours": 0},
-        "winter": {"values": [0 for _ in range(24)], "count": 0, "hours": 0},
-        "spring": {"values": [0 for _ in range(24)], "count": 0, "hours": 0},
+        "summer": {"values": [0.0 for _ in range(24)], "count": 0, "hours": 0},
+        "fall": {"values": [0.0 for _ in range(24)], "count": 0, "hours": 0},
+        "winter": {"values": [0.0 for _ in range(24)], "count": 0, "hours": 0},
+        "spring": {"values": [0.0 for _ in range(24)], "count": 0, "hours": 0},
     }
 
     latitude = hass.config.latitude
@@ -64,7 +69,7 @@ async def async_load_predictor(hass: HomeAssistant, config_entry: MyConfigEntry)
 
     task = iter(load_statistics.values())
     iterable = iter(next(task, []))
-    last_record = 0.0
+    last_record = 0
 
     while True:
         try:
@@ -112,16 +117,16 @@ async def async_load_pv_predictor(hass: HomeAssistant, config_entry: MyConfigEnt
         statistics.get_last_statistics,
         hass,
         sys.maxsize,
-        config_entry.data["real_pv_production"],
+        config_entry.data[REAL_PV_PRODUCTION],
         False,
         types,
     )
 
     power_data = {
-        "summer": {"values": [0 for _ in range(24)], "count": 0},
-        "fall": {"values": [0 for _ in range(24)], "count": 0},
-        "winter": {"values": [0 for _ in range(24)], "count": 0},
-        "spring": {"values": [0 for _ in range(24)], "count": 0},
+        "summer": {"values": [0.0 for _ in range(24)], "count": 0},
+        "fall": {"values": [0.0 for _ in range(24)], "count": 0},
+        "winter": {"values": [0.0 for _ in range(24)], "count": 0},
+        "spring": {"values": [0.0 for _ in range(24)], "count": 0},
     }
 
     latitude = hass.config.latitude
@@ -129,7 +134,7 @@ async def async_load_pv_predictor(hass: HomeAssistant, config_entry: MyConfigEnt
 
     task = iter(power_real.values())
     iterable = iter(next(task, []))
-    last_record = 0.0
+    last_record = 0
 
     while True:
         try:
@@ -170,16 +175,16 @@ async def async_load_pv_predictor(hass: HomeAssistant, config_entry: MyConfigEnt
         statistics.get_last_statistics,
         hass,
         sys.maxsize,
-        config_entry.data["pv_production_forecast_today"],
+        config_entry.data[PV_PRODUCTION_FORECAST_TODAY],
         False,
         types,
     )
 
     predict_power_data = {
-        "summer": {"values": [0 for _ in range(24)], "count": 0, "hours": 0},
-        "fall": {"values": [0 for _ in range(24)], "count": 0, "hours": 0},
-        "winter": {"values": [0 for _ in range(24)], "count": 0, "hours": 0},
-        "spring": {"values": [0 for _ in range(24)], "count": 0, "hours": 0},
+        "summer": {"values": [0.0 for _ in range(24)], "count": 0, "hours": 0},
+        "fall": {"values": [0.0 for _ in range(24)], "count": 0, "hours": 0},
+        "winter": {"values": [0.0 for _ in range(24)], "count": 0, "hours": 0},
+        "spring": {"values": [0.0 for _ in range(24)], "count": 0, "hours": 0},
     }
 
     latitude = hass.config.latitude
@@ -187,7 +192,7 @@ async def async_load_pv_predictor(hass: HomeAssistant, config_entry: MyConfigEnt
 
     task = iter(power_predicted.values())
     iterable = iter(next(task, []))
-    last_record = 0.0
+    last_record = 0
 
     while True:
         try:
@@ -226,6 +231,7 @@ async def async_load_pv_predictor(hass: HomeAssistant, config_entry: MyConfigEnt
             info["values"] = [v / count for v in info["values"]]
 
     for season, data in predict_power_data.items():
+        data["count"] = max(data["count"], power_data[season]["count"])
         data["values"] = list(
             np.array(data["values"]) - np.array(power_data[season]["values"])
         )
@@ -291,7 +297,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: MyConfigEntry) ->
         saved = await async_load_pv_predictor(hass, config_entry)
 
     hass.data["pv_production_correction"]["data"] = saved
-    await load_store.async_save(saved)
+    await pv_store.async_save(saved)
 
     # Initialise the coordinator that manages data updates from your api.
     # This is defined in coordinator.py
