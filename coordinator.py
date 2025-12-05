@@ -30,7 +30,6 @@ from .const import (
     SPOT_MARKET_TODAY_ORDER,
     SPOT_MARKET_TOMORROW_ORDER,
 )
-from .sensor import Device
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,6 +47,16 @@ SEASONS_BY_MONTH = [
     "autumn",
     "winter",
 ]
+
+
+# TODO: change the Device class below to match the data structure returned by api
+@dataclass
+class Device:
+    """API device."""
+
+    device_id: int
+    name: str
+    state: float
 
 
 @dataclass
@@ -80,7 +89,7 @@ class SecondHouseholdCoordinator(DataUpdateCoordinator):
         self.api_key = config_entry.data[CONF_SECOND_HOME_API_KEY]
         self.device_id = config_entry.data[CONF_SECOND_HOME_DEVICE_ID]
 
-        self.url = f"https://{self.host}/v2/devices/api/get?auth_key={self.api_key}"
+        self.url = f"{self.host}/v2/devices/api/get?auth_key={self.api_key}"
         self.payload = {"ids": [self.device_id], "select": ["status"]}
         self.headers = {"Content-Type": "application/json"}
 
@@ -115,7 +124,13 @@ class SecondHouseholdCoordinator(DataUpdateCoordinator):
 
         # TODO: process response to match your Device structure
         # What is returned here is stored in self.data by the DataUpdateCoordinator
-        return "Second household Coordinator", response.json()
+        res = response.json()[0]
+        device = Device(
+            device_id=res["id"],
+            name=res["code"],
+            state=res["status"]["em:0"]["total_act_power"],
+        )
+        return APIData("Second household Coordinator", device)
 
     def send_request(self, url, payload, headers):
         """Send request."""
@@ -135,6 +150,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry) -> None:
         """Initialize coordinator."""
 
+        self.hass = hass
         self.today_order_entity = SPOT_MARKET_TODAY_ORDER
         self.has_tomorrow_entity = HAS_TOMORROW_SPOT_DATA
         self.tomorrow_order_entity = SPOT_MARKET_TOMORROW_ORDER
@@ -374,7 +390,8 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
         _LOGGER.warning(schedule)
         # What is returned here is stored in self.data by the DataUpdateCoordinator
-        return "Energy Management Coordinator", load[0], solar[0]
+        #         return "Energy Management Coordinator", load[0], solar[0]
+        return EnergyData("Energy Management Coordinator", 10.0, 12.0)
 
 
 class SpotPriceArray:

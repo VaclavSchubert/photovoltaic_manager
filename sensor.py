@@ -16,21 +16,9 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import MyConfigEntry
 from .const import DOMAIN
-from .coordinator import EnergyManagementCoordinator, SecondHouseholdCoordinator
+from .coordinator import Device, EnergyManagementCoordinator, SecondHouseholdCoordinator
 
 _LOGGER = logging.getLogger(__name__)
-
-
-# TODO: change the Device class below to match the data structure returned by api
-@dataclass
-class Device:
-    """API device."""
-
-    device_id: int
-    device_unique_id: str
-    device_type: str
-    name: str
-    state: int | bool
 
 
 async def async_setup_entry(
@@ -71,7 +59,6 @@ class SecondHouseholdConsumption(CoordinatorEntity, SensorEntity):
         """Update sensor with latest data from coordinator."""
         # This method is called by your DataUpdateCoordinator when a successful update runs.
         self.device = self.coordinator.data.device
-        _LOGGER.debug("Device: %s", self.device)
         self.async_write_ha_state()
 
     @property
@@ -87,7 +74,7 @@ class SecondHouseholdConsumption(CoordinatorEntity, SensorEntity):
         # If your device is created elsewhere, you can just specify the indentifiers parameter.
         # If your device connects via another device, add via_device parameter with the indentifiers of that device.
         return DeviceInfo(
-            name=f"SecondHouseholdConsumption{self.device.device_id}",
+            name=f"{self.device.name}",
             manufacturer="Shelly",
             sw_version="1.0",
             identifiers={
@@ -101,7 +88,7 @@ class SecondHouseholdConsumption(CoordinatorEntity, SensorEntity):
     @property
     def name(self) -> str:
         """Return the name of the sensor."""
-        return self.device.name
+        return "Second Household Consumption"
 
     @property
     def native_value(self) -> int | float:
@@ -126,7 +113,7 @@ class SecondHouseholdConsumption(CoordinatorEntity, SensorEntity):
         """Return unique id."""
         # All entities must have a unique id.  Think carefully what you want this to be as
         # changing it later will cause HA to create new entities.
-        return f"{DOMAIN}-{self.device.device_unique_id}"
+        return f"{DOMAIN}_{self.coordinator.data.controller_name.lower().replace(' ', '_')}"
 
 
 class CorrectedForecast(CoordinatorEntity, SensorEntity):
@@ -138,13 +125,13 @@ class CorrectedForecast(CoordinatorEntity, SensorEntity):
     ) -> None:
         """Initialize entity."""
         super().__init__(coordinator)
-        self.state: float = 0.0
+        self._state: float = 0.0
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Update sensor with latest data from coordinator."""
         # This method is called by your DataUpdateCoordinator when a successful update runs.
-        self.state = self.coordinator.data.corrected_forecast
+        self._state = self.coordinator.data.corrected_forecast
         self.async_write_ha_state()
 
     @property
@@ -163,7 +150,7 @@ class CorrectedForecast(CoordinatorEntity, SensorEntity):
         """Return the state of the entity."""
         # Using native value and native unit of measurement, allows you to change units
         # in Lovelace and HA will automatically calculate the correct value.
-        return float(self.state)
+        return float(self._state)
 
     @property
     def native_unit_of_measurement(self) -> str | None:
@@ -193,13 +180,13 @@ class HouseloadPrediction(CoordinatorEntity, SensorEntity):
     ) -> None:
         """Initialize entity."""
         super().__init__(coordinator)
-        self.state: float = 0.0
+        self._state: float = 0.0
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Update sensor with latest data from coordinator."""
         # This method is called by your DataUpdateCoordinator when a successful update runs.
-        self.state = self.coordinator.data.houseload_prediction
+        self._state = self.coordinator.data.houseload_prediction
         self.async_write_ha_state()
 
     @property
@@ -218,7 +205,7 @@ class HouseloadPrediction(CoordinatorEntity, SensorEntity):
         """Return the state of the entity."""
         # Using native value and native unit of measurement, allows you to change units
         # in Lovelace and HA will automatically calculate the correct value.
-        return float(self.state)
+        return float(self._state)
 
     @property
     def native_unit_of_measurement(self) -> str | None:
