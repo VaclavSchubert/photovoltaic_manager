@@ -563,7 +563,8 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         )
 
         penalty = pulp.LpVariable.dicts(
-            "penalty", range(H), lowBound=0, upBound=1, cat="Continuous"
+            "penalty",
+            range(H),
         )
 
         obj_sum = pulp.LpVariable("obj_sum")
