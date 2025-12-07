@@ -15,11 +15,13 @@ DEFAULT_PLAN_INTERVAL = 3600  # 1 hour
 # Required configuration keys
 # solax
 REAL_PV_PRODUCTION = "sensor.solax_pv_power_total"
-INVERTER_EXPORT_IMPORT = "button.solax_remotecontrol_trigger"
 HOUSEHOLD_CONSUMPTION = "sensor.solax_house_load"
 BATTERY_STATUS = "sensor.solax_battery_capacity"
+INVERTER_POWER = "number.solax_export_control_user_limit"
+INVERTER_EXPORT_IMPORT = "button.solax_remotecontrol_trigger"
 REMOTECONTROL_POWER = "number.solax_remotecontrol_active_power"
 REMOTECONTROL_MODE = "select.solax_remotecontrol_power_control"
+REMOTECONTROL_DURATION = "number.solax_remotecontrol_autorepeat_duration"
 
 # forecast_solar
 PV_PRODUCTION_FORECAST_TODAY = "sensor.power_production_now"
