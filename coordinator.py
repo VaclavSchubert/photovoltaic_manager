@@ -135,7 +135,6 @@ class SecondHouseholdCoordinator(DataUpdateCoordinator):
             # This will show entities as unavailable by raising UpdateFailed exception
             raise UpdateFailed(f"Error communicating with API: {err}") from err
 
-        # TODO: process response to match your Device structure
         # What is returned here is stored in self.data by the DataUpdateCoordinator
         res = response.json()[0]
         device = Device(
@@ -442,39 +441,44 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         sell_price = list(self.spot_array.prices)  # price to export to grid
 
         # Battery parameters
-        bat_capacity = self.bat_capacity  # kWh
-        bat_power = 3  # kW
+        """
         inverter_power_state = self.hass.states.get(self.inverter_power)
-        """if inverter_power_state is None:
+        if inverter_power_state is None:
             raise UpdateFailed(f"Entity {self.inverter_power} not found")
         inverter_power = float(inverter_power_state.state)
-        """
-        inverter_power = 9.7
-        eff_charge = 0.95
-        eff_discharge = 0.95
-        """
-
         initial_soc_state = self.hass.states.get(self.initial_soc_entity)
         if initial_soc_state is None:
             raise UpdateFailed(f"Entity {self.initial_soc_entity} not found")
         soc_initial = float(initial_soc_state.state) * bat_capacity  # kWh"""
-        soc_initial = 40
+        bat_capacity = self.bat_capacity  # kWh
+        bat_power = 3  # kW
+        inverter_power = 9.7
+        eff_charge = 0.95
+        eff_discharge = 0.95
+        soc_initial = 8.65
         soc_final_target = self.bat_capacity / 2  # kWh
 
-        P_AC_nom = 1.1
-        P_EWH_bar = 3.3
-        alpha = 0.92
-        beta = 0.14
-        gamma = 2.77
+        P_AC_el = 1.1
+        P_AC_therm = 3.5
+        P_EWH = 3.3
+        alpha = 0.95
+        beta = 0.05
+        gamma = 0.2
         # TODO: get from climate - current temperature
         theta_init = 21.0
         theta_min = 19.0
         theta_max = 25.0
         # TODO: replace with actual ambient temperature
         P_amb = [20 for i in range(24)]
-        AC_hours = 8
-        EWH_hours = 12
 
+        avg_temp = sum(P_amb) / len(P_amb)
+
+        if avg_temp - (theta_max + theta_min) / 2 > 0:
+            P_AC_therm *= -1
+
+        AC_hours = int(abs(theta_init - avg_temp))
+        EWH_hours = 6
+        """
         await self.hass.services.async_call(
             "input_select",
             "select_option",
@@ -484,7 +488,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             },
             blocking=True,
         )
-        """
+
         await self.hass.services.async_call(
             "button",
             "press",
@@ -506,26 +510,16 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             blocking=True,
         )"""
         # Solar generation in kW, assuming a peak around midday
-        var_solar = [
-            max(0, np.random.normal(loc=2 * np.sin(np.pi * t / H), scale=0.5))
-            for t in range(H)
-        ]
+        var_solar = [max(0, float(np.sin(np.pi * t / H)) * 2.4) for t in range(H)]
 
         # Load demand in kW, assuming a base load plus morning/evening peaks
-        var_load = [
-            np.random.normal(loc=1.5, scale=0.3)
-            + (2 if 6 <= t <= 9 else 0)
-            + (2 if 18 <= t <= 21 else 0)
-            for t in range(H)
-        ]
-
-        _LOGGER.warning(var_load)
-        _LOGGER.warning(var_solar)
+        var_load = [np.random.normal(loc=0.5, scale=0.1) for t in range(H)]
 
         m = pulp.LpProblem("EnergyManagement", pulp.LpMinimize)
-
         # Decision variables
-        battery = pulp.LpVariable.dicts("battery", range(H), cat=pulp.LpBinary)
+        battery = pulp.LpVariable.dicts(
+            "battery", range(H), lowBound=0, upBound=1, cat=pulp.LpBinary
+        )
         charge = pulp.LpVariable.dicts(
             "charge", range(H), lowBound=0, upBound=bat_power
         )
@@ -537,9 +531,15 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         )
         aux_charging = pulp.LpVariable.dicts("aux_charging", range(H), lowBound=0)
 
-        grid = pulp.LpVariable.dicts("grid", range(H), cat=pulp.LpBinary)
-        grid_import = pulp.LpVariable.dicts("import", range(H), lowBound=0)
-        grid_export = pulp.LpVariable.dicts("export", range(H), lowBound=0)
+        grid = pulp.LpVariable.dicts(
+            "grid", range(H), lowBound=0, upBound=1, cat=pulp.LpBinary
+        )
+        grid_import = pulp.LpVariable.dicts(
+            "import", range(H), lowBound=0, upBound=inverter_power
+        )
+        grid_export = pulp.LpVariable.dicts(
+            "export", range(H), lowBound=0, upBound=inverter_power
+        )
 
         theta = pulp.LpVariable.dicts(
             "theta",
@@ -551,15 +551,15 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
         # Electrical heaters and EWH
         v_E_wh = pulp.LpVariable.dicts(
-            "v_E_wh", range(H), lowBound=0, upBound=1, cat="Binary"
+            "v_E_wh", range(H), lowBound=0, upBound=1, cat=pulp.LpBinary
         )  # if water heater on
 
         v_AC = pulp.LpVariable.dicts(
-            "v_AC", range(H), lowBound=0, upBound=1, cat="Binary"
+            "v_AC", range(H), lowBound=0, upBound=1, cat=pulp.LpBinary
         )  # if AC on
 
         pen_low_soc = pulp.LpVariable.dicts(
-            "pen_low_soc", range(H), lowBound=0, upBound=1, cat="Binary"
+            "pen_low_soc", range(H), lowBound=0, upBound=1, cat=pulp.LpBinary
         )
 
         penalty = pulp.LpVariable.dicts(
@@ -567,13 +567,13 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             range(H),
         )
 
-        obj_sum = pulp.LpVariable("obj_sum")
+        obj_sum = pulp.LpVariable.dicts("obj_sum", range(H), cat=pulp.LpContinuous)
 
         m += soc[0] == soc_initial
         m += theta[0] == theta_init
 
-        m += pulp.lpSum(v_AC) == AC_hours
-        m += pulp.lpSum(v_E_wh) == EWH_hours
+        m += pulp.lpSum(v_AC[t] for t in range(H)) == AC_hours
+        m += pulp.lpSum(v_E_wh[t] for t in range(H)) == EWH_hours
 
         for t in range(H):
             m += grid_import[t] <= inverter_power * grid[t]
@@ -593,7 +593,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
             m += (
                 theta[t + 1]
-                == alpha * theta[t] + beta * P_amb[t] + gamma * P_AC_nom * v_AC[t]
+                == alpha * theta[t] + beta * P_amb[t] + gamma * P_AC_therm * v_AC[t]
             )
 
             m += soc[t] - self.min_soc / 100 * bat_capacity <= bat_capacity * (
@@ -604,27 +604,26 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 >= -bat_capacity * pen_low_soc[t]
             )
 
-            m += penalty[t] <= 0.2 * obj_sum
-            m += penalty[t] >= 0.2 * obj_sum - 4242 * (1 - pen_low_soc[t])
+            m += penalty[t] <= 0.2 * obj_sum[t]
+            m += penalty[t] >= 0.2 * obj_sum[t] - 1 * (1 - pen_low_soc[t])
+
+            m += (
+                obj_sum[t]
+                == grid_import[t] * buy_price[t] - grid_export[t] * sell_price[t]
+            )
 
             m += (
                 var_solar[t] + grid_import[t] + discharge[t]
                 == var_load[t]
-                + P_AC_nom * v_AC[t]
-                + P_EWH_bar * v_E_wh[t]
+                + P_AC_el * v_AC[t]
+                + P_EWH * v_E_wh[t]
                 + charge[t]
                 + grid_export[t]
             )
 
-        m += obj_sum == pulp.lpSum(
-            [
-                grid_import[t] * buy_price[t] - grid_export[t] * sell_price[t]
-                for t in range(H)
-            ]
-        )
         m += soc[H] >= soc_final_target
 
-        m += obj_sum + pulp.lpSum([penalty[t] for t in range(H)])
+        m += pulp.lpSum([obj_sum[t] + penalty[t] for t in range(H)])
 
         await recorder.get_instance(self.hass).async_add_executor_job(
             m.solve, pulp.PULP_CBC_CMD(msg=False)
@@ -633,8 +632,19 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         _LOGGER.warning(pulp.LpStatus[m.status])
 
         schedule = {
+            "v_AC": [pulp.value(v_AC[t]) for t in range(H)],
+            "v_ewh": [pulp.value(v_E_wh[t]) for t in range(H)],
+            "penalty": [pulp.value(penalty[t]) for t in range(H)],
+            "obj_sum": [
+                pulp.value(
+                    grid_import[t] * buy_price[t] - grid_export[t] * sell_price[t]
+                )
+                for t in range(H)
+            ],
+            "theta": [pulp.value(theta[t]) for t in range(H)],
             "charge": [pulp.value(charge[t]) for t in range(H)],
             "discharge": [pulp.value(discharge[t]) for t in range(H)],
+            "grid": [pulp.value(grid[t]) for t in range(H)],
             "grid_import": [pulp.value(grid_import[t]) for t in range(H)],
             "grid_export": [pulp.value(grid_export[t]) for t in range(H)],
             "soc": [pulp.value(soc[t]) for t in range(H + 1)],
