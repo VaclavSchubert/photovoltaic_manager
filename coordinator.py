@@ -480,7 +480,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         EWH_hours = 6
         """
         await self.hass.services.async_call(
-            "input_select",
+            "select",
             "select_option",
             {
                 "entity_id": REMOTECONTROL_MODE,
@@ -506,7 +506,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         await self.hass.services.async_call(
             "number",
             "set_value",
-            {"entity_id": REMOTECONTROL_DURATION, "value": 2000},
+            {"entity_id": REMOTECONTROL_DURATION, "value": 3600},
             blocking=True,
         )"""
         # Solar generation in kW, assuming a peak around midday
