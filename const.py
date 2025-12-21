@@ -36,6 +36,7 @@ SPOT_MARKET_TOMORROW_ORDER = "sensor.tomorrow_spot_electricity_hour_order"
 CONF_MIN_SOC = "min_soc"  # number input field
 CONF_MAX_SOC = "max_soc"  # number input field
 CONF_BATTERY_CAPACITY = "battery_capacity"  # number input field
+CONF_WEATHER_FORECAST = "weather_forecast"
 CONF_APPLIANCES_TO_CONTROL = (
     "appliances_to_control"  # list of switches or relays to control
 )

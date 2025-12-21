@@ -19,6 +19,7 @@ from .const import (
     CONF_BATTERY_CAPACITY,
     CONF_MAX_SOC,
     CONF_MIN_SOC,
+    CONF_WEATHER_FORECAST,
     CONF_SECOND_HOME_API_KEY,
     CONF_SECOND_HOME_DEVICE_ID,
     CONF_SECOND_HOME_SERVER,
@@ -91,6 +92,14 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                         }
                     }
                 ),
+                vol.Required(CONF_WEATHER_FORECAST): selector(
+                    {
+                        "entity": {
+                            "domain": ["weather"],
+                            "multiple": False,
+                        }
+                    }
+                ),
                 vol.Optional(CONF_SECOND_HOME_SERVER): cv.string,
                 vol.Optional(CONF_SECOND_HOME_API_KEY): cv.string,
                 vol.Optional(CONF_SECOND_HOME_DEVICE_ID): cv.string,
@@ -152,6 +161,17 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                         "entity": {
                             "domain": ["switch", "relay", "climate"],
                             "multiple": True,
+                        }
+                    }
+                ),
+                vol.Required(
+                    CONF_WEATHER_FORECAST,
+                    default=config_entry.data.get(CONF_WEATHER_FORECAST, []),
+                ): selector(
+                    {
+                        "entity": {
+                            "domain": ["weather"],
+                            "multiple": False,
                         }
                     }
                 ),

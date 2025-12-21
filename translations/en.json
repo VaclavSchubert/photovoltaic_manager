@@ -18,7 +18,7 @@
           "max_soc": "Maximum State of Charge",
           "battery_capacity": "Battery Capacity (kWh)",
           "appliances_to_control": "Appliances to Control",
-
+          "weather_forecast": "Entity of Weather Forecast",
           "second_home_server": "Second Home Server (Optional)",
           "second_home_api_key": "Second Home API Key (Optional)",
           "second_home_device_id": "Second Home Device ID (Optional)"
@@ -30,7 +30,7 @@
           "max_soc": "Maximum State of Charge",
           "battery_capacity": "Battery Capacity (kWh)",
           "appliances_to_control": "Appliances to Control",
-
+          "weather_forecast": "Entity of Weather Forecast",
           "second_home_server": "Second Home Server (Optional)",
           "second_home_api_key": "Second Home API Key (Optional)",
           "second_home_device_id": "Second Home Device ID (Optional)"

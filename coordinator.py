@@ -29,6 +29,7 @@ from .const import (
     CONF_SECOND_HOME_API_KEY,
     CONF_SECOND_HOME_DEVICE_ID,
     CONF_SECOND_HOME_SERVER,
+    CONF_WEATHER_FORECAST,
     DEFAULT_PLAN_INTERVAL,
     DOMAIN,
     HAS_TOMORROW_SPOT_DATA,
@@ -179,7 +180,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         self.appliances_to_control = config_entry.data.get(
             CONF_APPLIANCES_TO_CONTROL, []
         )  # list of switches or relays to control
-
+        self.weather = config_entry.data.get(CONF_WEATHER_FORECAST, "")
         # set variables from options.  You need a default here incase options have not been set
         self.poll_interval = DEFAULT_PLAN_INTERVAL
         self.spot_array = SpotPriceArray()
@@ -318,7 +319,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(
                 f"Not enough history data to compute solar prediction for {self.forecast_pv_production_entity}"
             )
-        # TODO: get from significant states? self.forecast_pv_production_entity, need 24 len array from forecast
+
         solar = list(
             np.clip(
                 np.array(solar_prediction)
@@ -464,19 +465,49 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         alpha = 0.95
         beta = 0.05
         gamma = 0.2
-        # TODO: get from climate - current temperature
-        theta_init = 21.0
+
+        current_temp = 21.0
+        climate_entity = self.hass.states.get("climate.living_room")
+        if climate_entity is not None:
+            current_temp = float(
+                climate_entity.attributes.get("current_temperature", 21.0)
+            )
+
         theta_min = 19.0
-        theta_max = 25.0
-        # TODO: replace with actual ambient temperature
-        P_amb = [20 for i in range(24)]
+        theta_max = 23.0
+
+        result = await self.hass.services.async_call(
+            "weather",
+            "get_forecasts",
+            {
+                "entity_id": self.weather,
+                "type": "hourly",
+            },
+            blocking=True,
+            return_response=True,
+        )
+
+        if not isinstance(result, dict) or self.weather not in result:
+            raise UpdateFailed(
+                f"Invalid forecast response from weather service for {self.weather}"
+            )
+
+        forecast_data = result[self.weather]
+        if not isinstance(forecast_data, dict) or "forecast" not in forecast_data:
+            raise UpdateFailed(
+                f"Missing forecast data in weather service response for {self.weather}"
+            )
+
+        forecast = forecast_data["forecast"]
+        P_amb = [f["temperature"] for f in forecast]
 
         avg_temp = sum(P_amb) / len(P_amb)
 
         if avg_temp - (theta_max + theta_min) / 2 > 0:
             P_AC_therm *= -1
 
-        AC_hours = int(abs(theta_init - avg_temp))
+        # TODO: if achours > 24, lax conditions
+        AC_hours = min(int(abs(current_temp - avg_temp) / P_AC_therm / gamma), 24)
         EWH_hours = 6
         """
         await self.hass.services.async_call(
@@ -570,7 +601,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         obj_sum = pulp.LpVariable.dicts("obj_sum", range(H), cat=pulp.LpContinuous)
 
         m += soc[0] == soc_initial
-        m += theta[0] == theta_init
+        m += theta[0] == current_temp
 
         m += pulp.lpSum(v_AC[t] for t in range(H)) == AC_hours
         m += pulp.lpSum(v_E_wh[t] for t in range(H)) == EWH_hours
