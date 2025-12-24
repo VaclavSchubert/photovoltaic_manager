@@ -8,6 +8,5 @@
     "integration_type": "service",
     "iot_class": "cloud_polling",
     "requirements": ["pulp"],
-    "version": "0.1.0",
-    "icon": "mdi:home-lightning-bolt"
+    "version": "0.1.0"
 }
