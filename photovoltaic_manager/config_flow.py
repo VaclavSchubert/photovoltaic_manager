@@ -64,7 +64,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             blocking=True,
         )
     except KeyError:
-        data[CONF_BOILER_HEATING] = None
+        data[CONF_BOILER_HEATING] = ""
     except Exception:  # noqa: BLE001
         raise ApplianceNoncontrollable from Exception
 
@@ -85,7 +85,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             blocking=True,
         )
     except KeyError:
-        data[CONF_AIR_CONDITIONING] = None
+        data[CONF_AIR_CONDITIONING] = ""
     except Exception:  # noqa: BLE001
         raise ApplianceNoncontrollable from Exception
 
@@ -108,9 +108,9 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         )
 
     # TODO: validate Solax entities exist and are available
-    solax_state = hass.states.get(REAL_PV_PRODUCTION)
+    """solax_state = hass.states.get(REAL_PV_PRODUCTION)
     if solax_state is None or solax_state.state in ("unknown", "unavailable"):
-        raise SolaxInvalidState
+        raise SolaxInvalidState"""
 
     weather = hass.states.get(data[CONF_WEATHER_FORECAST])
     if (
@@ -168,6 +168,14 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_MIN_SOC): vol.Coerce(int),
                 vol.Required(CONF_MAX_SOC): vol.Coerce(int),
                 vol.Required(CONF_BATTERY_CAPACITY): vol.Coerce(float),
+                vol.Required(CONF_WEATHER_FORECAST): selector(
+                    {
+                        "entity": {
+                            "domain": ["weather"],
+                            "multiple": False,
+                        }
+                    }
+                ),
                 vol.Optional(CONF_AIR_CONDITIONING): selector(
                     {
                         "entity": {
@@ -180,14 +188,6 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                     {
                         "entity": {
                             "domain": ["switch"],
-                            "multiple": False,
-                        }
-                    }
-                ),
-                vol.Required(CONF_WEATHER_FORECAST): selector(
-                    {
-                        "entity": {
-                            "domain": ["weather"],
                             "multiple": False,
                         }
                     }
@@ -254,28 +254,6 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_BATTERY_CAPACITY,
                     default=config_entry.data.get(CONF_BATTERY_CAPACITY, 5.0),
                 ): vol.Coerce(float),
-                vol.Optional(
-                    CONF_AIR_CONDITIONING,
-                    default=config_entry.data.get(CONF_AIR_CONDITIONING, ""),
-                ): selector(
-                    {
-                        "entity": {
-                            "domain": ["climate"],
-                            "multiple": False,
-                        }
-                    }
-                ),
-                vol.Optional(
-                    CONF_BOILER_HEATING,
-                    default=config_entry.data.get(CONF_BOILER_HEATING, ""),
-                ): selector(
-                    {
-                        "entity": {
-                            "domain": ["switch"],
-                            "multiple": False,
-                        }
-                    }
-                ),
                 vol.Required(
                     CONF_WEATHER_FORECAST,
                     default=config_entry.data.get(CONF_WEATHER_FORECAST, ""),
@@ -288,16 +266,33 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                     }
                 ),
                 vol.Optional(
+                    CONF_AIR_CONDITIONING,
+                ): selector(
+                    {
+                        "entity": {
+                            "domain": ["climate"],
+                            "multiple": False,
+                        }
+                    }
+                ),
+                vol.Optional(
+                    CONF_BOILER_HEATING,
+                ): selector(
+                    {
+                        "entity": {
+                            "domain": ["switch"],
+                            "multiple": False,
+                        }
+                    }
+                ),
+                vol.Optional(
                     CONF_SECOND_HOME_SERVER,
-                    default=config_entry.data.get(CONF_SECOND_HOME_SERVER, ""),
                 ): cv.string,
                 vol.Optional(
                     CONF_SECOND_HOME_API_KEY,
-                    default=config_entry.data.get(CONF_SECOND_HOME_API_KEY, ""),
                 ): cv.string,
                 vol.Optional(
                     CONF_SECOND_HOME_DEVICE_ID,
-                    default=config_entry.data.get(CONF_SECOND_HOME_DEVICE_ID, ""),
                 ): cv.string,
             }
         )
