@@ -22,7 +22,6 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     BATTERY_STATUS,
-    CONF_APPLIANCES_TO_CONTROL,
     CONF_BATTERY_CAPACITY,
     CONF_MAX_SOC,
     CONF_MIN_SOC,
@@ -177,9 +176,6 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         self.bat_capacity = config_entry.data.get(CONF_BATTERY_CAPACITY, 10.0)  # kWh
         self.min_soc = config_entry.data.get(CONF_MIN_SOC, 10)  # %
         self.max_soc = config_entry.data.get(CONF_MAX_SOC, 90)  # %
-        self.appliances_to_control = config_entry.data.get(
-            CONF_APPLIANCES_TO_CONTROL, []
-        )  # list of switches or relays to control
         self.weather = config_entry.data.get(CONF_WEATHER_FORECAST, "")
         # set variables from options.  You need a default here incase options have not been set
         self.poll_interval = DEFAULT_PLAN_INTERVAL

@@ -15,7 +15,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import MyConfigEntry
-from .const import DOMAIN
+from .const import CONF_SECOND_HOME_DEVICE_ID, DOMAIN
 from .coordinator import Device, EnergyManagementCoordinator, SecondHouseholdCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -28,13 +28,25 @@ async def async_setup_entry(
 ):
     """Set up the Sensors."""
     # This gets the data update coordinator from the config entry runtime data as specified in your __init__.py
-    coordinator: SecondHouseholdCoordinator = config_entry.runtime_data.coordinator
+    coordinator: SecondHouseholdCoordinator | None = (
+        config_entry.runtime_data.coordinator
+    )
     scheduler: EnergyManagementCoordinator = config_entry.runtime_data.scheduler
+
+    try:
+        config_entry.data[CONF_SECOND_HOME_DEVICE_ID]
+        if coordinator is not None:
+            async_add_entities(
+                [
+                    SecondHouseholdConsumption(coordinator, coordinator.data.device),
+                ]
+            )
+    except KeyError:
+        pass
 
     # Create the sensors.
     async_add_entities(
         [
-            SecondHouseholdConsumption(coordinator, coordinator.data.device),
             CorrectedForecast(scheduler),
             HouseloadPrediction(scheduler),
         ]

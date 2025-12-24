@@ -22,6 +22,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
+    CONF_SECOND_HOME_DEVICE_ID,
     HOUSEHOLD_CONSUMPTION,
     PLATFORMS,
     PV_PRODUCTION_FORECAST_TODAY,
@@ -39,7 +40,7 @@ type MyConfigEntry = ConfigEntry[RuntimeData]
 class RuntimeData:
     """Class to hold your data."""
 
-    coordinator: SecondHouseholdCoordinator
+    coordinator: SecondHouseholdCoordinator | None
     scheduler: EnergyManagementCoordinator
 
 
@@ -301,12 +302,16 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: MyConfigEntry) ->
 
     # Initialise the coordinator that manages data updates from your api.
     # This is defined in coordinator.py
-    coordinator = SecondHouseholdCoordinator(hass, config_entry)
+    try:
+        config_entry.data[CONF_SECOND_HOME_DEVICE_ID]
+        coordinator = SecondHouseholdCoordinator(hass, config_entry)
+        await coordinator.async_config_entry_first_refresh()
+    except KeyError:
+        coordinator = None
     scheduler = EnergyManagementCoordinator(hass, config_entry)
 
     # Perform an initial data load from api.
     # async_config_entry_first_refresh() is special in that it does not log errors if it fails
-    await coordinator.async_config_entry_first_refresh()
     await scheduler.async_config_entry_first_refresh()
 
     # Add the coordinator and update listener to config runtime data to make

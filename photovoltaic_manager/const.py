@@ -37,9 +37,8 @@ CONF_MIN_SOC = "min_soc"  # number input field
 CONF_MAX_SOC = "max_soc"  # number input field
 CONF_BATTERY_CAPACITY = "battery_capacity"  # number input field
 CONF_WEATHER_FORECAST = "weather_forecast"
-CONF_APPLIANCES_TO_CONTROL = (
-    "appliances_to_control"  # list of switches or relays to control
-)
+CONF_AIR_CONDITIONING = "air_conditioning"  # climate to control
+CONF_BOILER_HEATING = "boiler_heating"  # switch to control
 
 # Optional configuration
 CONF_SECOND_HOME_SERVER = "second_home_server"  # input text field

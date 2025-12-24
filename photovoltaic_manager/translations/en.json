@@ -6,8 +6,11 @@
       "reconfigure_successful": "Reconfiguration successful"
     },
     "error": {
-      "cannot_connect": "Failed to connect",
-      "invalid_auth": "Invalid authentication",
+      "cannot_connect": "Failed to connect to ShellyCloud",
+      "invalid_auth": "Invalid second household configuration",
+      "solax_invalid_state": "Solax entity is unavailable or in unknown state",
+      "weather_invalid_state": "Weather entity is unavailable, in unknown state, or missing attributes",
+      "appliance_noncontrollable": "One or more selected appliances are not controllable",
       "unknown": "Unexpected error"
     },
     "step": {
@@ -17,8 +20,9 @@
           "min_soc": "Minimum State of Charge",
           "max_soc": "Maximum State of Charge",
           "battery_capacity": "Battery Capacity (kWh)",
-          "appliances_to_control": "Appliances to Control",
           "weather_forecast": "Entity of Weather Forecast",
+          "air_conditioning": "Air Conditioning to Control (Optional)",
+          "boiler_heating": "Boiler Heating to Control (Optional)",
           "second_home_server": "Second Home Server (Optional)",
           "second_home_api_key": "Second Home API Key (Optional)",
           "second_home_device_id": "Second Home Device ID (Optional)"
@@ -29,8 +33,9 @@
           "min_soc": "Minimum State of Charge",
           "max_soc": "Maximum State of Charge",
           "battery_capacity": "Battery Capacity (kWh)",
-          "appliances_to_control": "Appliances to Control",
           "weather_forecast": "Entity of Weather Forecast",
+          "air_conditioning": "Air Conditioning to Control (Optional)",
+          "boiler_heating": "Boiler Heating to Control (Optional)",
           "second_home_server": "Second Home Server (Optional)",
           "second_home_api_key": "Second Home API Key (Optional)",
           "second_home_device_id": "Second Home Device ID (Optional)"

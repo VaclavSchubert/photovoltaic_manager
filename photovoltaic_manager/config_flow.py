@@ -5,28 +5,40 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import requests
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import entity_registry as er, recorder
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.selector import selector
 
 from .const import (
-    CONF_APPLIANCES_TO_CONTROL,
+    CONF_AIR_CONDITIONING,
     CONF_BATTERY_CAPACITY,
+    CONF_BOILER_HEATING,
     CONF_MAX_SOC,
     CONF_MIN_SOC,
-    CONF_WEATHER_FORECAST,
     CONF_SECOND_HOME_API_KEY,
     CONF_SECOND_HOME_DEVICE_ID,
     CONF_SECOND_HOME_SERVER,
+    CONF_WEATHER_FORECAST,
     DOMAIN,
+    REAL_PV_PRODUCTION,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _validate_shelly(url, payload, headers):
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        raise CannotConnect from e
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
@@ -34,13 +46,79 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
     Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
     """
-    # TODO: dropdown has entities with triggerable options only
 
-    # TODO: shelly request returns 200 ok
+    try:
+        domain, entity_id = data[CONF_BOILER_HEATING].split(".", 1)
 
-    # TODO: solax remotecontrol is in grid control mode
+        await hass.services.async_call(
+            domain,
+            "toggle",
+            {"entity_id": entity_id},
+            blocking=True,
+        )
 
-    # TODO: solax entities are available
+        await hass.services.async_call(
+            domain,
+            "toggle",
+            {"entity_id": entity_id},
+            blocking=True,
+        )
+    except KeyError:
+        data[CONF_BOILER_HEATING] = None
+    except Exception:  # noqa: BLE001
+        raise ApplianceNoncontrollable from Exception
+
+    try:
+        domain, entity_id = data[CONF_AIR_CONDITIONING].split(".", 1)
+
+        await hass.services.async_call(
+            domain,
+            "set_hvac_mode",
+            {"entity_id": entity_id, "value": "cool"},
+            blocking=True,
+        )
+
+        await hass.services.async_call(
+            domain,
+            "set_hvac_mode",
+            {"entity_id": entity_id, "value": "off"},
+            blocking=True,
+        )
+    except KeyError:
+        data[CONF_AIR_CONDITIONING] = None
+    except Exception:  # noqa: BLE001
+        raise ApplianceNoncontrollable from Exception
+
+    shelly_fields = (
+        CONF_SECOND_HOME_API_KEY,
+        CONF_SECOND_HOME_DEVICE_ID,
+        CONF_SECOND_HOME_SERVER,
+    )
+
+    shelly_filled = [bool(data.get(f)) for f in shelly_fields]
+
+    if any(shelly_filled) and not all(shelly_filled):
+        raise InvalidAuth
+    if all(shelly_filled):
+        url = f"{data[CONF_SECOND_HOME_SERVER]}/v2/devices/api/get?auth_key={data[CONF_SECOND_HOME_API_KEY]}"
+        payload = {"ids": [data[CONF_SECOND_HOME_DEVICE_ID]], "select": ["status"]}
+        headers = {"Content-Type": "application/json"}
+        _ = await recorder.get_instance(hass).async_add_executor_job(
+            _validate_shelly, url, payload, headers
+        )
+
+    # TODO: validate Solax entities exist and are available
+    solax_state = hass.states.get(REAL_PV_PRODUCTION)
+    if solax_state is None or solax_state.state in ("unknown", "unavailable"):
+        raise SolaxInvalidState
+
+    weather = hass.states.get(data[CONF_WEATHER_FORECAST])
+    if (
+        weather is None
+        or weather.state in ("unknown", "unavailable")
+        or not weather.attributes
+    ):
+        raise WeatherInvalidState
 
     return {"title": "Energy Management Integration"}
 
@@ -69,6 +147,12 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
             except InvalidAuth:
                 errors["base"] = "invalid_auth"
+            except SolaxInvalidState:
+                errors["base"] = "solax_invalid_state"
+            except WeatherInvalidState:
+                errors["base"] = "weather_invalid_state"
+            except ApplianceNoncontrollable:
+                errors["base"] = "appliance_noncontrollable"
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
@@ -84,11 +168,19 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_MIN_SOC): vol.Coerce(int),
                 vol.Required(CONF_MAX_SOC): vol.Coerce(int),
                 vol.Required(CONF_BATTERY_CAPACITY): vol.Coerce(float),
-                vol.Required(CONF_APPLIANCES_TO_CONTROL): selector(
+                vol.Optional(CONF_AIR_CONDITIONING): selector(
                     {
                         "entity": {
-                            "domain": ["switch", "relay", "climate"],
-                            "multiple": True,
+                            "domain": ["climate"],
+                            "multiple": False,
+                        }
+                    }
+                ),
+                vol.Optional(CONF_BOILER_HEATING): selector(
+                    {
+                        "entity": {
+                            "domain": ["switch"],
+                            "multiple": False,
                         }
                     }
                 ),
@@ -128,7 +220,16 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 await validate_input(self.hass, user_input)
-            # TODO: create exceptions
+            except CannotConnect:
+                errors["base"] = "cannot_connect"
+            except InvalidAuth:
+                errors["base"] = "invalid_auth"
+            except SolaxInvalidState:
+                errors["base"] = "solax_invalid_state"
+            except WeatherInvalidState:
+                errors["base"] = "weather_invalid_state"
+            except ApplianceNoncontrollable:
+                errors["base"] = "appliance_noncontrollable"
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
@@ -153,20 +254,31 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_BATTERY_CAPACITY,
                     default=config_entry.data.get(CONF_BATTERY_CAPACITY, 5.0),
                 ): vol.Coerce(float),
-                vol.Required(
-                    CONF_APPLIANCES_TO_CONTROL,
-                    default=config_entry.data.get(CONF_APPLIANCES_TO_CONTROL, []),
+                vol.Optional(
+                    CONF_AIR_CONDITIONING,
+                    default=config_entry.data.get(CONF_AIR_CONDITIONING, ""),
                 ): selector(
                     {
                         "entity": {
-                            "domain": ["switch", "relay", "climate"],
-                            "multiple": True,
+                            "domain": ["climate"],
+                            "multiple": False,
+                        }
+                    }
+                ),
+                vol.Optional(
+                    CONF_BOILER_HEATING,
+                    default=config_entry.data.get(CONF_BOILER_HEATING, ""),
+                ): selector(
+                    {
+                        "entity": {
+                            "domain": ["switch"],
+                            "multiple": False,
                         }
                     }
                 ),
                 vol.Required(
                     CONF_WEATHER_FORECAST,
-                    default=config_entry.data.get(CONF_WEATHER_FORECAST, []),
+                    default=config_entry.data.get(CONF_WEATHER_FORECAST, ""),
                 ): selector(
                     {
                         "entity": {
@@ -203,3 +315,15 @@ class CannotConnect(HomeAssistantError):
 
 class InvalidAuth(HomeAssistantError):
     """Error to indicate there is invalid auth."""
+
+
+class SolaxInvalidState(HomeAssistantError):
+    """Error to indicate solax entity is in invalid state."""
+
+
+class WeatherInvalidState(HomeAssistantError):
+    """Error to indicate weather entity is in invalid state."""
+
+
+class ApplianceNoncontrollable(HomeAssistantError):
+    """Error to indicate appliance is non-controllable."""
