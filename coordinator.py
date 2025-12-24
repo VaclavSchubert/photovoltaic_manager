@@ -473,8 +473,12 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 climate_entity.attributes.get("current_temperature", 21.0)
             )
 
-        theta_min = 19.0
+        theta_min = 15.0
         theta_max = 23.0
+
+        # TODO: if current temp not within range, lax temperature conditions
+        if current_temp not in range(int(theta_min), int(theta_max)):
+            pass
 
         result = await self.hass.services.async_call(
             "weather",
@@ -506,40 +510,10 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         if avg_temp - (theta_max + theta_min) / 2 > 0:
             P_AC_therm *= -1
 
-        # TODO: if achours > 24, lax conditions
+        # TODO: if ac hours > 24, lax conditions
         AC_hours = min(int(abs(current_temp - avg_temp) / P_AC_therm / gamma), 24)
         EWH_hours = 6
-        """
-        await self.hass.services.async_call(
-            "select",
-            "select_option",
-            {
-                "entity_id": REMOTECONTROL_MODE,
-                "option": "Enabled Grid Control",
-            },
-            blocking=True,
-        )
 
-        await self.hass.services.async_call(
-            "button",
-            "press",
-            {"entity_id": INVERTER_EXPORT_IMPORT},
-            blocking=True,
-        )
-
-        await self.hass.services.async_call(
-            "number",
-            "set_value",
-            {"entity_id": REMOTECONTROL_POWER, "value": 2000},
-            blocking=True,
-        )
-
-        await self.hass.services.async_call(
-            "number",
-            "set_value",
-            {"entity_id": REMOTECONTROL_DURATION, "value": 3600},
-            blocking=True,
-        )"""
         # Solar generation in kW, assuming a peak around midday
         var_solar = [max(0, float(np.sin(np.pi * t / H)) * 2.4) for t in range(H)]
 
@@ -682,6 +656,40 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         }
 
         _LOGGER.warning(schedule)
+
+        """
+        await self.hass.services.async_call(
+            "select",
+            "select_option",
+            {
+                "entity_id": REMOTECONTROL_MODE,
+                "option": "Enabled Grid Control",
+            },
+            blocking=True,
+        )
+
+        await self.hass.services.async_call(
+            "number",
+            "set_value",
+            {"entity_id": REMOTECONTROL_POWER, "value": pulp.value(grid_import[0]) if pulp.value(grid[0]) == 1 else -pulp.value(grid_export[0])},
+            blocking=True,
+        )
+
+        await self.hass.services.async_call(
+            "number",
+            "set_value",
+            {"entity_id": REMOTECONTROL_DURATION, "value": 3600},
+            blocking=True,
+        )
+
+        await self.hass.services.async_call(
+            "button",
+            "press",
+            {"entity_id": INVERTER_EXPORT_IMPORT},
+            blocking=True,
+        )
+        """
+
         # What is returned here is stored in self.data by the DataUpdateCoordinator
         return EnergyData("Energy Management Coordinator", load[0], solar[0])
 
