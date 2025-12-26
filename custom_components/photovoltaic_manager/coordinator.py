@@ -22,7 +22,9 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     BATTERY_STATUS,
+    CONF_AIR_CONDITIONING,
     CONF_BATTERY_CAPACITY,
+    CONF_BOILER_HEATING,
     CONF_MAX_SOC,
     CONF_MIN_SOC,
     CONF_SECOND_HOME_API_KEY,
@@ -177,6 +179,8 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         self.min_soc = config_entry.data.get(CONF_MIN_SOC, 10)  # %
         self.max_soc = config_entry.data.get(CONF_MAX_SOC, 90)  # %
         self.weather = config_entry.data.get(CONF_WEATHER_FORECAST, "")
+        self.ac = config_entry.data.get(CONF_AIR_CONDITIONING, "")
+        self.heater = config_entry.data.get(CONF_BOILER_HEATING, "")
         # set variables from options.  You need a default here incase options have not been set
         self.poll_interval = DEFAULT_PLAN_INTERVAL
         self.spot_array = SpotPriceArray()
@@ -340,6 +344,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             False,
             types,
         )
+        # DEBUG
         last_hour_load = {"key": [{"mean": load[0]}]}
 
         last_hour_load = list(last_hour_load.values())[0][0].get("mean")
@@ -364,6 +369,8 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             False,
             types,
         )
+
+        # DEBUG
         last_hour_production = {"key": [{"mean": solar[0]}]}
         last_hour_production = solar[-1] - list(last_hour_production.values())[0][
             0
@@ -371,7 +378,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         await self.update_predictions(
             self.hass,
             "pv_production_correction",
-            last_hour_load,
+            last_hour_production,
             SEASONS_BY_MONTH[month],
             hour - 1 % 24,
         )
@@ -437,6 +444,10 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         self.spot_array.build_array(today_order, tomorrow_order, has_tomorrow, hour)
         sell_price = list(self.spot_array.prices)  # price to export to grid
 
+        # begin optimization model
+        m = pulp.LpProblem("EnergyManagement", pulp.LpMinimize)
+
+        # DEBUG
         # Battery parameters
         """
         inverter_power_state = self.hass.states.get(self.inverter_power)
@@ -454,69 +465,99 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         eff_discharge = 0.95
         soc_initial = 8.65
         soc_final_target = self.bat_capacity / 2  # kWh
+        P_AC_el = 0.0
+        P_EWH = 0.0
 
-        P_AC_el = 1.1
-        P_AC_therm = 3.5
-        P_EWH = 3.3
-        alpha = 0.95
-        beta = 0.05
-        gamma = 0.2
+        if self.heater != "":
+            P_EWH = 3.3
+            EWH_hours = 6
 
-        current_temp = 21.0
-        climate_entity = self.hass.states.get("climate.living_room")
-        if climate_entity is not None:
-            current_temp = float(
-                climate_entity.attributes.get("current_temperature", 21.0)
+            # Electrical heaters and EWH
+            v_E_wh = pulp.LpVariable.dicts(
+                "v_E_wh", range(H), lowBound=0, upBound=1, cat=pulp.LpBinary
+            )  # if water heater on
+            m += pulp.lpSum(v_E_wh[t] for t in range(H)) == EWH_hours
+
+        if self.ac != "":
+            P_AC_el = 1.1
+            P_AC_therm = 3.5
+            alpha = 0.95
+            beta = 0.05
+            gamma = 0.2
+
+            current_temp = 21.0
+            climate_entity = self.hass.states.get("climate.living_room")
+            if climate_entity is not None:
+                current_temp = float(
+                    climate_entity.attributes.get("current_temperature", 21.0)
+                )
+
+            theta_min = 15.0
+            theta_max = 23.0
+
+            # TODO: if current temp not within range, lax temperature conditions
+            if current_temp not in range(int(theta_min), int(theta_max)):
+                pass
+
+            result = await self.hass.services.async_call(
+                "weather",
+                "get_forecasts",
+                {
+                    "entity_id": self.weather,
+                    "type": "hourly",
+                },
+                blocking=True,
+                return_response=True,
             )
 
-        theta_min = 15.0
-        theta_max = 23.0
+            if not isinstance(result, dict) or self.weather not in result:
+                raise UpdateFailed(
+                    f"Invalid forecast response from weather service for {self.weather}"
+                )
 
-        # TODO: if current temp not within range, lax temperature conditions
-        if current_temp not in range(int(theta_min), int(theta_max)):
-            pass
+            forecast_data = result[self.weather]
+            if not isinstance(forecast_data, dict) or "forecast" not in forecast_data:
+                raise UpdateFailed(
+                    f"Missing forecast data in weather service response for {self.weather}"
+                )
 
-        result = await self.hass.services.async_call(
-            "weather",
-            "get_forecasts",
-            {
-                "entity_id": self.weather,
-                "type": "hourly",
-            },
-            blocking=True,
-            return_response=True,
-        )
+            forecast = forecast_data["forecast"]
+            P_amb = [f["temperature"] for f in forecast]
 
-        if not isinstance(result, dict) or self.weather not in result:
-            raise UpdateFailed(
-                f"Invalid forecast response from weather service for {self.weather}"
-            )
+            avg_temp = sum(P_amb) / len(P_amb)
 
-        forecast_data = result[self.weather]
-        if not isinstance(forecast_data, dict) or "forecast" not in forecast_data:
-            raise UpdateFailed(
-                f"Missing forecast data in weather service response for {self.weather}"
-            )
+            if avg_temp - (theta_max + theta_min) / 2 > 0:
+                P_AC_therm *= -1
 
-        forecast = forecast_data["forecast"]
-        P_amb = [f["temperature"] for f in forecast]
+            # TODO: if ac hours > 24, lax conditions
+            AC_hours = min(int(abs(current_temp - avg_temp) / P_AC_therm / gamma), 24)
 
-        avg_temp = sum(P_amb) / len(P_amb)
+            theta = pulp.LpVariable.dicts(
+                "theta",
+                range(H + 1),
+                lowBound=theta_min,
+                upBound=theta_max,
+                cat="Continuous",
+            )  # room temperature
+            v_AC = pulp.LpVariable.dicts(
+                "v_AC", range(H), lowBound=0, upBound=1, cat=pulp.LpBinary
+            )  # if AC on
 
-        if avg_temp - (theta_max + theta_min) / 2 > 0:
-            P_AC_therm *= -1
+            m += theta[0] == current_temp
+            m += pulp.lpSum(v_AC[t] for t in range(H)) == AC_hours
 
-        # TODO: if ac hours > 24, lax conditions
-        AC_hours = min(int(abs(current_temp - avg_temp) / P_AC_therm / gamma), 24)
-        EWH_hours = 6
+            for t in range(H):
+                m += (
+                    theta[t + 1]
+                    == alpha * theta[t] + beta * P_amb[t] + gamma * P_AC_therm * v_AC[t]
+                )
 
+        # DEBUG
         # Solar generation in kW, assuming a peak around midday
         var_solar = [max(0, float(np.sin(np.pi * t / H)) * 2.4) for t in range(H)]
-
         # Load demand in kW, assuming a base load plus morning/evening peaks
         var_load = [np.random.normal(loc=0.5, scale=0.1) for t in range(H)]
 
-        m = pulp.LpProblem("EnergyManagement", pulp.LpMinimize)
         # Decision variables
         battery = pulp.LpVariable.dicts(
             "battery", range(H), lowBound=0, upBound=1, cat=pulp.LpBinary
@@ -542,23 +583,6 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             "export", range(H), lowBound=0, upBound=inverter_power
         )
 
-        theta = pulp.LpVariable.dicts(
-            "theta",
-            range(H + 1),
-            lowBound=theta_min,
-            upBound=theta_max,
-            cat="Continuous",
-        )  # room temperature
-
-        # Electrical heaters and EWH
-        v_E_wh = pulp.LpVariable.dicts(
-            "v_E_wh", range(H), lowBound=0, upBound=1, cat=pulp.LpBinary
-        )  # if water heater on
-
-        v_AC = pulp.LpVariable.dicts(
-            "v_AC", range(H), lowBound=0, upBound=1, cat=pulp.LpBinary
-        )  # if AC on
-
         pen_low_soc = pulp.LpVariable.dicts(
             "pen_low_soc", range(H), lowBound=0, upBound=1, cat=pulp.LpBinary
         )
@@ -571,10 +595,6 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         obj_sum = pulp.LpVariable.dicts("obj_sum", range(H), cat=pulp.LpContinuous)
 
         m += soc[0] == soc_initial
-        m += theta[0] == current_temp
-
-        m += pulp.lpSum(v_AC[t] for t in range(H)) == AC_hours
-        m += pulp.lpSum(v_E_wh[t] for t in range(H)) == EWH_hours
 
         for t in range(H):
             m += grid_import[t] <= inverter_power * grid[t]
@@ -591,11 +611,6 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             m += soc[t + 1] <= self.max_soc / 100 * bat_capacity
 
             m += aux_charging[t] == (var_solar[t] - charge[t])
-
-            m += (
-                theta[t + 1]
-                == alpha * theta[t] + beta * P_amb[t] + gamma * P_AC_therm * v_AC[t]
-            )
 
             m += soc[t] - self.min_soc / 100 * bat_capacity <= bat_capacity * (
                 1 - pen_low_soc[t]
@@ -653,37 +668,55 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
         _LOGGER.warning(schedule)
 
+        # DEBUG
         """
-        await self.hass.services.async_call(
-            "select",
-            "select_option",
-            {
-                "entity_id": REMOTECONTROL_MODE,
-                "option": "Enabled Grid Control",
-            },
-            blocking=True,
-        )
+        if pulp.LpStatus[m.status] == pulp.LpStatusOptimal:
+            await self.hass.services.async_call(
+                "select",
+                "select_option",
+                {
+                    "entity_id": REMOTECONTROL_MODE,
+                    "option": "Enabled Grid Control",
+                },
+                blocking=True,
+            )
 
-        await self.hass.services.async_call(
-            "number",
-            "set_value",
-            {"entity_id": REMOTECONTROL_POWER, "value": pulp.value(grid_import[0]) if pulp.value(grid[0]) == 1 else -pulp.value(grid_export[0])},
-            blocking=True,
-        )
+            await self.hass.services.async_call(
+                "number",
+                "set_value",
+                {"entity_id": REMOTECONTROL_POWER, "value": pulp.value(grid_import[0]) if pulp.value(grid[0]) == 1 else -pulp.value(grid_export[0])},
+                blocking=True,
+            )
 
-        await self.hass.services.async_call(
-            "number",
-            "set_value",
-            {"entity_id": REMOTECONTROL_DURATION, "value": 3600},
-            blocking=True,
-        )
+            await self.hass.services.async_call(
+                "number",
+                "set_value",
+                {"entity_id": REMOTECONTROL_DURATION, "value": 3600},
+                blocking=True,
+            )
 
-        await self.hass.services.async_call(
-            "button",
-            "press",
-            {"entity_id": INVERTER_EXPORT_IMPORT},
-            blocking=True,
-        )
+            await self.hass.services.async_call(
+                "button",
+                "press",
+                {"entity_id": INVERTER_EXPORT_IMPORT},
+                blocking=True,
+            )
+
+            if self.heater != "" and pulp.value(v_E_wh[0]) > 0.5:
+                await self.hass.services.async_call(
+                    "switch",
+                    "turn_on",
+                    {"entity_id": CONF_BOILER_HEATING},
+                    blocking=True,
+                )
+
+            if self.ac != "" and pulp.value(v_AC[0]) > 0.5:
+                await self.hass.services.async_call(
+                    "climate",
+                    "set_hvac_mode",
+                    {"entity_id": CONF_AIR_CONDITIONING, "hvac_mode": "cool" if P_AC_therm < 0 else "heat"},
+                    blocking=True,
+                )
         """
 
         # What is returned here is stored in self.data by the DataUpdateCoordinator

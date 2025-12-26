@@ -1,6 +1,6 @@
 {
   "name": "Photovoltaic Manager",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "domain": "photovoltaic_manager",
   "content_in_root": false,
   "render_readme": true
