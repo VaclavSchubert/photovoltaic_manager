@@ -472,10 +472,6 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             P_EWH = 3.3
             EWH_hours = 6
 
-            # Electrical heaters and EWH
-            v_E_wh = pulp.LpVariable.dicts(
-                "v_E_wh", range(H), lowBound=0, upBound=1, cat=pulp.LpBinary
-            )  # if water heater on
             m += pulp.lpSum(v_E_wh[t] for t in range(H)) == EWH_hours
 
         if self.ac != "":
@@ -539,9 +535,6 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 upBound=theta_max,
                 cat="Continuous",
             )  # room temperature
-            v_AC = pulp.LpVariable.dicts(
-                "v_AC", range(H), lowBound=0, upBound=1, cat=pulp.LpBinary
-            )  # if AC on
 
             m += theta[0] == current_temp
             m += pulp.lpSum(v_AC[t] for t in range(H)) == AC_hours
@@ -591,6 +584,14 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             "penalty",
             range(H),
         )
+
+        v_AC = pulp.LpVariable.dicts(
+            "v_AC", range(H), lowBound=0, upBound=1, cat=pulp.LpBinary
+        )  # if AC on
+        # Electrical heaters and EWH
+        v_E_wh = pulp.LpVariable.dicts(
+            "v_E_wh", range(H), lowBound=0, upBound=1, cat=pulp.LpBinary
+        )  # if water heater on
 
         obj_sum = pulp.LpVariable.dicts("obj_sum", range(H), cat=pulp.LpContinuous)
 
