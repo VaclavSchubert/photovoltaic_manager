@@ -468,6 +468,14 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         P_AC_el = 0.0
         P_EWH = 0.0
 
+        v_AC = pulp.LpVariable.dicts(
+            "v_AC", range(H), lowBound=0, upBound=1, cat=pulp.LpBinary
+        )  # if AC on
+        # Electrical heaters and EWH
+        v_E_wh = pulp.LpVariable.dicts(
+            "v_E_wh", range(H), lowBound=0, upBound=1, cat=pulp.LpBinary
+        )  # if water heater on
+
         if self.heater != "":
             P_EWH = 3.3
             EWH_hours = 6
@@ -584,14 +592,6 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             "penalty",
             range(H),
         )
-
-        v_AC = pulp.LpVariable.dicts(
-            "v_AC", range(H), lowBound=0, upBound=1, cat=pulp.LpBinary
-        )  # if AC on
-        # Electrical heaters and EWH
-        v_E_wh = pulp.LpVariable.dicts(
-            "v_E_wh", range(H), lowBound=0, upBound=1, cat=pulp.LpBinary
-        )  # if water heater on
 
         obj_sum = pulp.LpVariable.dicts("obj_sum", range(H), cat=pulp.LpContinuous)
 
