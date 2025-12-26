@@ -53,7 +53,7 @@ async def async_load_predictor(hass: HomeAssistant, config_entry: MyConfigEntry)
         statistics.get_last_statistics,
         hass,
         sys.maxsize,
-        config_entry.data[HOUSEHOLD_CONSUMPTION],
+        HOUSEHOLD_CONSUMPTION,
         False,
         types,
     )
@@ -118,7 +118,7 @@ async def async_load_pv_predictor(hass: HomeAssistant, config_entry: MyConfigEnt
         statistics.get_last_statistics,
         hass,
         sys.maxsize,
-        config_entry.data[REAL_PV_PRODUCTION],
+        REAL_PV_PRODUCTION,
         False,
         types,
     )
@@ -176,7 +176,7 @@ async def async_load_pv_predictor(hass: HomeAssistant, config_entry: MyConfigEnt
         statistics.get_last_statistics,
         hass,
         sys.maxsize,
-        config_entry.data[PV_PRODUCTION_FORECAST_TODAY],
+        PV_PRODUCTION_FORECAST_TODAY,
         False,
         types,
     )
