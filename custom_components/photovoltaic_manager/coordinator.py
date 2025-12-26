@@ -658,7 +658,6 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 )
                 for t in range(H)
             ],
-            "theta": [pulp.value(theta[t]) for t in range(H)],
             "charge": [pulp.value(charge[t]) for t in range(H)],
             "discharge": [pulp.value(discharge[t]) for t in range(H)],
             "grid": [pulp.value(grid[t]) for t in range(H)],
@@ -668,6 +667,8 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         }
 
         _LOGGER.warning(schedule)
+        if self.ac != "":
+            _LOGGER.warning([pulp.value(theta[t]) for t in range(H)])
 
         # DEBUG
         """
