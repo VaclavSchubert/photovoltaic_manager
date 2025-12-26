@@ -87,7 +87,7 @@ async def async_load_predictor(hass: HomeAssistant, config_entry: MyConfigEntry)
                     continue
 
                 for hr in range(diff_hours):
-                    fill_hour = hour + hr + 1 % 24
+                    fill_hour = (hour + hr + 1) % 24
                     data[season]["values"][fill_hour] += data[season]["values"][
                         fill_hour
                     ] / (data[season]["count"] // 24) if (data[season]["count"] // 24) != 0 else 1
@@ -152,7 +152,7 @@ async def async_load_pv_predictor(hass: HomeAssistant, config_entry: MyConfigEnt
                     continue
 
                 for hr in range(diff_hours):
-                    fill_hour = hour + hr + 1 % 24
+                    fill_hour = (hour + hr + 1) % 24
                     power_data[season]["values"][fill_hour] += power_data[season][
                         "values"
                     ][fill_hour] / (power_data[season]["count"] // 24) if (power_data[season]["count"] // 24) != 0 else 1
@@ -210,7 +210,7 @@ async def async_load_pv_predictor(hass: HomeAssistant, config_entry: MyConfigEnt
                     continue
 
                 for hr in range(diff_hours):
-                    fill_hour = hour + hr + 1 % 24
+                    fill_hour = (hour + hr + 1) % 24
                     predict_power_data[season]["values"][fill_hour] += (
                         predict_power_data[season]["values"][fill_hour]
                         / (predict_power_data[season]["count"] // 24) if (predict_power_data[season]["count"] // 24) != 0 else 1
