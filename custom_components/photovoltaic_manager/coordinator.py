@@ -465,7 +465,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         initial_soc_state = self.hass.states.get(self.initial_soc_entity)
         if initial_soc_state is None:
             raise UpdateFailed(f"Entity {self.initial_soc_entity} not found")
-        soc_initial = float(initial_soc_state.state) * bat_capacity  # kWh
+        soc_initial = float(initial_soc_state.state) / 100 * bat_capacity  # kWh
 
         P_AC_el = 0.0
         P_EWH = 0.0
