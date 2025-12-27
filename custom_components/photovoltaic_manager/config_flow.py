@@ -48,19 +48,19 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     """
 
     try:
-        domain, entity_id = data[CONF_BOILER_HEATING].split(".", 1)
+        domain, _ = data[CONF_BOILER_HEATING].split(".", 1)
 
         await hass.services.async_call(
             domain,
             "toggle",
-            {"entity_id": entity_id},
+            {"entity_id": data[CONF_BOILER_HEATING]},
             blocking=True,
         )
 
         await hass.services.async_call(
             domain,
             "toggle",
-            {"entity_id": entity_id},
+            {"entity_id": data[CONF_BOILER_HEATING]},
             blocking=True,
         )
     except KeyError:
@@ -69,19 +69,19 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         raise ApplianceNoncontrollable from Exception
 
     try:
-        domain, entity_id = data[CONF_AIR_CONDITIONING].split(".", 1)
+        domain, _ = data[CONF_AIR_CONDITIONING].split(".", 1)
 
         await hass.services.async_call(
             domain,
             "set_hvac_mode",
-            {"entity_id": entity_id, "value": "cool"},
+            {"entity_id": data[CONF_AIR_CONDITIONING], "value": "cool"},
             blocking=True,
         )
 
         await hass.services.async_call(
             domain,
             "set_hvac_mode",
-            {"entity_id": entity_id, "value": "off"},
+            {"entity_id": data[CONF_AIR_CONDITIONING], "value": "off"},
             blocking=True,
         )
     except KeyError:

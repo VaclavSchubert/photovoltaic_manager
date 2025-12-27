@@ -391,6 +391,10 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         var_solar = solar
         var_load = load[hour:] + load[:hour]  # rotate to start from current hour
 
+        for h in range(H):
+            var_solar[h] /= 1000  # convert to kW
+            var_load[h] /= 1000  # convert to kW
+
         buy_price = [
             6.7,
             6.7,
@@ -465,7 +469,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         initial_soc_state = self.hass.states.get(self.initial_soc_entity)
         if initial_soc_state is None:
             raise UpdateFailed(f"Entity {self.initial_soc_entity} not found")
-        soc_initial = float(initial_soc_state.state) / 100 * bat_capacity  # kWh
+        soc_initial = float(initial_soc_state.state) / 100.0 * bat_capacity  # kWh
 
         P_AC_el = 0.0
         P_EWH = 0.0

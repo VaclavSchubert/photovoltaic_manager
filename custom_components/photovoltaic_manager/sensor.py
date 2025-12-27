@@ -210,7 +210,7 @@ class HouseloadPrediction(CoordinatorEntity, SensorEntity):
     @property
     def name(self) -> str:
         """Return the name of the sensor."""
-        return "Houseload Prediction"
+        return "House Load Prediction"
 
     @property
     def native_value(self) -> int | float:
