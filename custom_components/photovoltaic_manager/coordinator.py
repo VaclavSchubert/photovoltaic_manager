@@ -58,9 +58,9 @@ SEASONS_BY_MONTH = [
     "summer",
     "summer",
     "summer",
-    "autumn",
-    "autumn",
-    "autumn",
+    "fall",
+    "fall",
+    "fall",
     "winter",
 ]
 
@@ -224,7 +224,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         start_time = end_time - timedelta(hours=hours + 1)
 
         # Fetch history: dict: {entity_id: [State, State, ...]}
-        history = await recorder.get_instance(self.hass).async_add_executor_job(
+        history = await recorder.get_instance(hass).async_add_executor_job(
             get_significant_states,
             hass,
             start_time,
@@ -345,7 +345,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             types,
         )
         # DEBUG
-        last_hour_load = {"key": [{"mean": load[0]}]}
+        last_hour_load = {"key": [{"mean": load[hour]}]}
 
         last_hour_load = list(last_hour_load.values())[0][0].get("mean")
         await self.update_predictions(
@@ -353,11 +353,12 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             "house_load_predictor",
             last_hour_load,
             SEASONS_BY_MONTH[month],
-            hour - 1 % 24,
+            (hour - 1) % 24,
         )
 
-        diff = last_hour_load - load[hour - 1 % 24]
-        load[0] += diff
+        diff = last_hour_load - load[(hour - 1) % 24]
+        load[hour] += diff
+        load[hour] = max(load[hour], 0)
 
         last_hour_production = await recorder.get_instance(
             self.hass
@@ -380,13 +381,14 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             "pv_production_correction",
             last_hour_production,
             SEASONS_BY_MONTH[month],
-            hour - 1 % 24,
+            (hour - 1) % 24,
         )
 
-        diff = last_hour_production - solar[hour - 1 % 24]
+        diff = last_hour_production - solar[-1]
         solar[0] += diff
+        solar[0] = max(solar[0], 0)
 
-        var_solar = solar  # rotate to start from current hour
+        var_solar = solar
         var_load = load[hour:] + load[:hour]  # rotate to start from current hour
 
         buy_price = [
