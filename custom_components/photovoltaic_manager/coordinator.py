@@ -345,7 +345,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             types,
         )
         # DEBUG
-        last_hour_load = {"key": [{"mean": load[hour]}]}
+        # last_hour_load = {"key": [{"mean": load[hour]}]}
 
         last_hour_load = list(last_hour_load.values())[0][0].get("mean")
         await self.update_predictions(
@@ -372,7 +372,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         )
 
         # DEBUG
-        last_hour_production = {"key": [{"mean": solar[0]}]}
+        # last_hour_production = {"key": [{"mean": solar[0]}]}
         last_hour_production = solar[-1] - list(last_hour_production.values())[0][
             0
         ].get("mean")
@@ -449,9 +449,15 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         # begin optimization model
         m = pulp.LpProblem("EnergyManagement", pulp.LpMinimize)
 
+        bat_capacity = self.bat_capacity  # kWh
+        bat_power = 3  # kW
+        inverter_power = 9  # kW
+        eff_charge = 0.95
+        eff_discharge = 0.95
+        soc_initial = 8.65
+        soc_final_target = self.bat_capacity / 2  # kWh
         # DEBUG
         # Battery parameters
-        """
         inverter_power_state = self.hass.states.get(self.inverter_power)
         if inverter_power_state is None:
             raise UpdateFailed(f"Entity {self.inverter_power} not found")
@@ -459,14 +465,8 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         initial_soc_state = self.hass.states.get(self.initial_soc_entity)
         if initial_soc_state is None:
             raise UpdateFailed(f"Entity {self.initial_soc_entity} not found")
-        soc_initial = float(initial_soc_state.state) * bat_capacity  # kWh"""
-        bat_capacity = self.bat_capacity  # kWh
-        bat_power = 3  # kW
-        inverter_power = 9.7
-        eff_charge = 0.95
-        eff_discharge = 0.95
-        soc_initial = 8.65
-        soc_final_target = self.bat_capacity / 2  # kWh
+        soc_initial = float(initial_soc_state.state) * bat_capacity  # kWh
+
         P_AC_el = 0.0
         P_EWH = 0.0
 
@@ -557,9 +557,9 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
         # DEBUG
         # Solar generation in kW, assuming a peak around midday
-        var_solar = [max(0, float(np.sin(np.pi * t / H)) * 2.4) for t in range(H)]
+        # var_solar = [max(0, float(np.sin(np.pi * t / H)) * 2.4) for t in range(H)]
         # Load demand in kW, assuming a base load plus morning/evening peaks
-        var_load = [np.random.normal(loc=0.5, scale=0.1) for t in range(H)]
+        # var_load = [np.random.normal(loc=0.5, scale=0.1) for t in range(H)]
 
         # Decision variables
         battery = pulp.LpVariable.dicts(

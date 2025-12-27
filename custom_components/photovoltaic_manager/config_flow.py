@@ -107,10 +107,10 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             _validate_shelly, url, payload, headers
         )
 
-    # TODO: validate Solax entities exist and are available
-    """solax_state = hass.states.get(REAL_PV_PRODUCTION)
+    # DEBUG: validate Solax entities exist and are available
+    solax_state = hass.states.get(REAL_PV_PRODUCTION)
     if solax_state is None or solax_state.state in ("unknown", "unavailable"):
-        raise SolaxInvalidState"""
+        raise SolaxInvalidState
 
     weather = hass.states.get(data[CONF_WEATHER_FORECAST])
     if (

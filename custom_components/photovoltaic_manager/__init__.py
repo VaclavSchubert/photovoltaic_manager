@@ -88,9 +88,12 @@ async def async_load_predictor(hass: HomeAssistant, config_entry: MyConfigEntry)
 
                 for hr in range(diff_hours):
                     fill_hour = (hour + hr + 1) % 24
-                    data[season]["values"][fill_hour] += data[season]["values"][
-                        fill_hour
-                    ] / (data[season]["count"] // 24) if (data[season]["count"] // 24) != 0 else 1
+                    data[season]["values"][fill_hour] += (
+                        data[season]["values"][fill_hour]
+                        / (data[season]["count"] // 24)
+                        if (data[season]["count"] // 24) != 0
+                        else 1
+                    )
                     data[season]["count"] += 1
 
             data[season]["values"][hour] += item["mean"]
@@ -153,9 +156,12 @@ async def async_load_pv_predictor(hass: HomeAssistant, config_entry: MyConfigEnt
 
                 for hr in range(diff_hours):
                     fill_hour = (hour + hr + 1) % 24
-                    power_data[season]["values"][fill_hour] += power_data[season][
-                        "values"
-                    ][fill_hour] / (power_data[season]["count"] // 24) if (power_data[season]["count"] // 24) != 0 else 1
+                    power_data[season]["values"][fill_hour] += (
+                        power_data[season]["values"][fill_hour]
+                        / (power_data[season]["count"] // 24)
+                        if (power_data[season]["count"] // 24) != 0
+                        else 1
+                    )
                     power_data[season]["count"] += 1
 
             power_data[season]["values"][hour] += item["mean"]
@@ -213,7 +219,9 @@ async def async_load_pv_predictor(hass: HomeAssistant, config_entry: MyConfigEnt
                     fill_hour = (hour + hr + 1) % 24
                     predict_power_data[season]["values"][fill_hour] += (
                         predict_power_data[season]["values"][fill_hour]
-                        / (predict_power_data[season]["count"] // 24) if (predict_power_data[season]["count"] // 24) != 0 else 1
+                        / (predict_power_data[season]["count"] // 24)
+                        if (predict_power_data[season]["count"] // 24) != 0
+                        else 1
                     )
                     predict_power_data[season]["count"] += 1
 
@@ -268,11 +276,6 @@ async def get_season_from_epoch(seconds, hemisphere="northern"):
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: MyConfigEntry) -> bool:
     """Set up Example Integration from a config entry."""
-
-    # Test to see if api initialised correctly, else raise ConfigNotReady to make HA retry setup
-    # TODO: Change this to match how your api will know if connected or successful update
-    # if not coordinator.api.connected:
-    #    raise ConfigEntryNotReady
 
     hass.data.setdefault("house_load_predictor", {})
     load_store = Store(hass, 1, "house_load_predictor")
