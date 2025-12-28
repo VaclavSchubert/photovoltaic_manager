@@ -84,6 +84,8 @@ async def async_load_predictor(hass: HomeAssistant):
     while True:
         try:
             item = next(iterable)
+            if item["mean"] < 0 or item["mean"] > 10000:
+                continue  # Ignore invalid data
             epoch_seconds = item["start"]
             hour = datetime.fromtimestamp(
                 epoch_seconds, zoneinfo.ZoneInfo(hass.config.time_zone)
@@ -138,10 +140,15 @@ async def async_load_pv_predictor(hass: HomeAssistant):
 
     task = iter(power_real.values())
     iterable = iter(next(task, []))
+    last_value = 0.0
 
     while True:
         try:
             item = next(iterable)
+            if item["mean"] < 0 or item["mean"] > 15000:
+                continue  # Ignore invalid data
+            if item["mean"] == last_value and last_value != 0.0:
+                continue  # Ignore invalid data
             epoch_seconds = item["start"]
             hour = datetime.fromtimestamp(
                 epoch_seconds, zoneinfo.ZoneInfo(hass.config.time_zone)
@@ -185,10 +192,15 @@ async def async_load_pv_predictor(hass: HomeAssistant):
 
     task = iter(power_predicted.values())
     iterable = iter(next(task, []))
+    last_value = 0.0
 
     while True:
         try:
             item = next(iterable)
+            if item["mean"] < 0 or item["mean"] > 15000:
+                continue  # Ignore invalid data
+            if item["mean"] == last_value and last_value != 0.0:
+                continue  # Ignore invalid data
             epoch_seconds = item["start"]
             hour = datetime.fromtimestamp(
                 epoch_seconds, zoneinfo.ZoneInfo(hass.config.time_zone)
@@ -197,6 +209,7 @@ async def async_load_pv_predictor(hass: HomeAssistant):
 
             predict_power_data[season]["values"][hour] += item["mean"]
             predict_power_data[season]["counts"][hour] += 1
+            last_value = item["mean"]
         except StopIteration:
             break
 
