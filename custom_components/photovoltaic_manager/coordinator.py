@@ -354,6 +354,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         )
 
         diff = last_hour_load - load[(hour - 1) % 24]
+        load_now = load[hour]
         load[hour] += diff
         load[hour] = max(load[hour], 0)
 
@@ -456,7 +457,15 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         eff_charge = 0.95
         eff_discharge = 0.95
         soc_initial = 8.65
-        soc_final_target = self.bat_capacity / 2  # kWh
+        soc_final_target = (
+            (
+                self.min_soc
+                + (self.max_soc - self.min_soc) * (1 - np.sin(np.pi * month / 11))
+            )
+            / 100
+            * bat_capacity
+        )  # kWh
+
         # DEBUG
         # Battery parameters
         inverter_power_state = self.hass.states.get(self.inverter_power)
@@ -686,7 +695,14 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 blocking=True,
             )
 
-            remotecontrol_power = int((pulp.value(grid_import[0]) if pulp.value(grid[0]) == 1 else -pulp.value(grid_export[0])) * 1000)
+            remotecontrol_power = int(
+                (
+                    pulp.value(grid_import[0])
+                    if pulp.value(grid[0]) == 1
+                    else -pulp.value(grid_export[0])
+                )
+                * 1000
+            )
 
             await self.hass.services.async_call(
                 "number",
