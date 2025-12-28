@@ -752,6 +752,8 @@ class SpotPriceArray:
             else []
         )
 
+        self.prices = []
+
         # Add remaining hours today
         if has_tomorrow:
             for _, data in today_hours[current_hour:]:
