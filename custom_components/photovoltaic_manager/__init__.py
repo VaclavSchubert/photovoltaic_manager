@@ -24,6 +24,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .const import (
     CONF_SECOND_HOME_DEVICE_ID,
     HOUSEHOLD_CONSUMPTION,
+    INVERTER_POWER,
     PLATFORMS,
     PV_PRODUCTION_FORECAST_TODAY,
     REAL_PV_PRODUCTION,
@@ -44,7 +45,7 @@ class RuntimeData:
     scheduler: EnergyManagementCoordinator
 
 
-async def async_load_predictor(hass: HomeAssistant, config_entry: MyConfigEntry):
+async def async_load_predictor(hass: HomeAssistant):
     """Load predictor data."""
 
     types: set[Literal["last_reset", "max", "mean", "min", "state", "sum"]] = {"mean"}
@@ -59,10 +60,19 @@ async def async_load_predictor(hass: HomeAssistant, config_entry: MyConfigEntry)
     )
 
     data = {
-        "summer": {"values": [0.0 for _ in range(24)], "count": 0, "hours": 0},
-        "fall": {"values": [0.0 for _ in range(24)], "count": 0, "hours": 0},
-        "winter": {"values": [0.0 for _ in range(24)], "count": 0, "hours": 0},
-        "spring": {"values": [0.0 for _ in range(24)], "count": 0, "hours": 0},
+        "summer": {
+            "values": [0.0 for _ in range(24)],
+            "counts": [0 for _ in range(24)],
+        },
+        "fall": {"values": [0.0 for _ in range(24)], "counts": [0 for _ in range(24)]},
+        "winter": {
+            "values": [0.0 for _ in range(24)],
+            "counts": [0 for _ in range(24)],
+        },
+        "spring": {
+            "values": [0.0 for _ in range(24)],
+            "counts": [0 for _ in range(24)],
+        },
     }
 
     latitude = hass.config.latitude
@@ -70,7 +80,6 @@ async def async_load_predictor(hass: HomeAssistant, config_entry: MyConfigEntry)
 
     task = iter(load_statistics.values())
     iterable = iter(next(task, []))
-    last_record = 0
 
     while True:
         try:
@@ -80,39 +89,21 @@ async def async_load_predictor(hass: HomeAssistant, config_entry: MyConfigEntry)
                 epoch_seconds, zoneinfo.ZoneInfo(hass.config.time_zone)
             ).hour
             season = await get_season_from_epoch(epoch_seconds, hemisphere)
-            if last_record - epoch_seconds > 3600:
-                diff_hours = int((last_record - epoch_seconds) / 3600) % 24
-                if diff_hours == 0:
-                    last_record = item["start"]
-                    continue
-
-                for hr in range(diff_hours):
-                    fill_hour = (hour + hr + 1) % 24
-                    data[season]["values"][fill_hour] += (
-                        data[season]["values"][fill_hour]
-                        / (data[season]["count"] // 24)
-                        if (data[season]["count"] // 24) != 0
-                        else 1
-                    )
-                    data[season]["count"] += 1
 
             data[season]["values"][hour] += item["mean"]
-            last_record = item["start"]
+            data[season]["counts"][hour] += 1
         except StopIteration:
             break
-        data[season]["count"] += 1
 
-    for info in data.values():
-        info["count"] = info["count"] // 24  # each hour counted separately
+    for hour in data.values():
+        for hr in range(24):
+            if hour["counts"][hr] > 0:
+                hour["values"][hr] /= hour["counts"][hr]
 
-    for info in data.values():
-        count = info["count"]
-        if count > 0:
-            info["values"] = [v / count for v in info["values"]]
     return data
 
 
-async def async_load_pv_predictor(hass: HomeAssistant, config_entry: MyConfigEntry):
+async def async_load_pv_predictor(hass: HomeAssistant):
     """Load PV predictor data."""
 
     types: set[Literal["last_reset", "max", "mean", "min", "state", "sum"]] = {"mean"}
@@ -127,10 +118,19 @@ async def async_load_pv_predictor(hass: HomeAssistant, config_entry: MyConfigEnt
     )
 
     power_data = {
-        "summer": {"values": [0.0 for _ in range(24)], "count": 0},
-        "fall": {"values": [0.0 for _ in range(24)], "count": 0},
-        "winter": {"values": [0.0 for _ in range(24)], "count": 0},
-        "spring": {"values": [0.0 for _ in range(24)], "count": 0},
+        "summer": {
+            "values": [0.0 for _ in range(24)],
+            "counts": [0 for _ in range(24)],
+        },
+        "fall": {"values": [0.0 for _ in range(24)], "counts": [0 for _ in range(24)]},
+        "winter": {
+            "values": [0.0 for _ in range(24)],
+            "counts": [0 for _ in range(24)],
+        },
+        "spring": {
+            "values": [0.0 for _ in range(24)],
+            "counts": [0 for _ in range(24)],
+        },
     }
 
     latitude = hass.config.latitude
@@ -138,7 +138,6 @@ async def async_load_pv_predictor(hass: HomeAssistant, config_entry: MyConfigEnt
 
     task = iter(power_real.values())
     iterable = iter(next(task, []))
-    last_record = 0
 
     while True:
         try:
@@ -148,35 +147,16 @@ async def async_load_pv_predictor(hass: HomeAssistant, config_entry: MyConfigEnt
                 epoch_seconds, zoneinfo.ZoneInfo(hass.config.time_zone)
             ).hour
             season = await get_season_from_epoch(epoch_seconds, hemisphere)
-            if last_record - epoch_seconds > 3600:
-                diff_hours = int((last_record - epoch_seconds) / 3600) % 24
-                if diff_hours == 0:
-                    last_record = item["start"]
-                    continue
-
-                for hr in range(diff_hours):
-                    fill_hour = (hour + hr + 1) % 24
-                    power_data[season]["values"][fill_hour] += (
-                        power_data[season]["values"][fill_hour]
-                        / (power_data[season]["count"] // 24)
-                        if (power_data[season]["count"] // 24) != 0
-                        else 1
-                    )
-                    power_data[season]["count"] += 1
 
             power_data[season]["values"][hour] += item["mean"]
-            last_record = item["start"]
+            power_data[season]["counts"][hour] += 1
         except StopIteration:
             break
-        power_data[season]["count"] += 1
 
-    for info in power_data.values():
-        info["count"] = info["count"] // 24  # each hour counted separately
-
-    for info in power_data.values():
-        count = info["count"]
-        if count > 0:
-            info["values"] = [v / count for v in info["values"]]
+    for hour in power_data.values():
+        for hr in range(24):
+            if hour["counts"][hr] > 0:
+                hour["values"][hr] /= hour["counts"][hr]
 
     power_predicted = await recorder.get_instance(hass).async_add_executor_job(
         statistics.get_last_statistics,
@@ -188,18 +168,23 @@ async def async_load_pv_predictor(hass: HomeAssistant, config_entry: MyConfigEnt
     )
 
     predict_power_data = {
-        "summer": {"values": [0.0 for _ in range(24)], "count": 0, "hours": 0},
-        "fall": {"values": [0.0 for _ in range(24)], "count": 0, "hours": 0},
-        "winter": {"values": [0.0 for _ in range(24)], "count": 0, "hours": 0},
-        "spring": {"values": [0.0 for _ in range(24)], "count": 0, "hours": 0},
+        "summer": {
+            "values": [0.0 for _ in range(24)],
+            "counts": [0 for _ in range(24)],
+        },
+        "fall": {"values": [0.0 for _ in range(24)], "counts": [0 for _ in range(24)]},
+        "winter": {
+            "values": [0.0 for _ in range(24)],
+            "counts": [0 for _ in range(24)],
+        },
+        "spring": {
+            "values": [0.0 for _ in range(24)],
+            "counts": [0 for _ in range(24)],
+        },
     }
-
-    latitude = hass.config.latitude
-    hemisphere = "northern" if latitude >= 0 else "southern"
 
     task = iter(power_predicted.values())
     iterable = iter(next(task, []))
-    last_record = 0
 
     while True:
         try:
@@ -209,38 +194,18 @@ async def async_load_pv_predictor(hass: HomeAssistant, config_entry: MyConfigEnt
                 epoch_seconds, zoneinfo.ZoneInfo(hass.config.time_zone)
             ).hour
             season = await get_season_from_epoch(epoch_seconds, hemisphere)
-            if last_record - epoch_seconds > 3600:
-                diff_hours = int((last_record - epoch_seconds) / 3600) % 24
-                if diff_hours == 0:
-                    last_record = item["start"]
-                    continue
-
-                for hr in range(diff_hours):
-                    fill_hour = (hour + hr + 1) % 24
-                    predict_power_data[season]["values"][fill_hour] += (
-                        predict_power_data[season]["values"][fill_hour]
-                        / (predict_power_data[season]["count"] // 24)
-                        if (predict_power_data[season]["count"] // 24) != 0
-                        else 1
-                    )
-                    predict_power_data[season]["count"] += 1
 
             predict_power_data[season]["values"][hour] += item["mean"]
-            last_record = item["start"]
+            predict_power_data[season]["counts"][hour] += 1
         except StopIteration:
             break
-        predict_power_data[season]["count"] += 1
 
-    for info in predict_power_data.values():
-        info["count"] = info["count"] // 24  # each hour counted separately
-
-    for info in predict_power_data.values():
-        count = info["count"]
-        if count > 0:
-            info["values"] = [v / count for v in info["values"]]
+    for hour in predict_power_data.values():
+        for hr in range(24):
+            if hour["counts"][hr] > 0:
+                hour["values"][hr] /= hour["counts"][hr]
 
     for season, data in predict_power_data.items():
-        data["count"] = max(data["count"], power_data[season]["count"])
         data["values"] = list(
             np.array(data["values"]) - np.array(power_data[season]["values"])
         )
@@ -275,7 +240,13 @@ async def get_season_from_epoch(seconds, hemisphere="northern"):
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: MyConfigEntry) -> bool:
-    """Set up Example Integration from a config entry."""
+    """Set up Custom Integration from a config entry."""
+
+    inverter_power_state = hass.states.get(INVERTER_POWER)
+    if inverter_power_state is None:
+        raise ConfigEntryNotReady("Solax not loaded yet, cannot start integration")
+    elif inverter_power_state.state in {"unavailable", "unknown"}:
+        raise ConfigEntryNotReady("Solax inverter power sensor is unavailable")
 
     hass.data.setdefault("house_load_predictor", {})
     load_store = Store(hass, 1, "house_load_predictor")
@@ -285,7 +256,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: MyConfigEntry) ->
     hass.data["house_load_predictor"]["store"] = load_store
 
     if saved == {}:
-        saved = await async_load_predictor(hass, config_entry)
+        saved = await async_load_predictor(hass)
 
     hass.data["house_load_predictor"]["data"] = saved
     await load_store.async_save(saved)
@@ -298,18 +269,17 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: MyConfigEntry) ->
     hass.data["pv_production_correction"]["store"] = pv_store
 
     if saved == {}:
-        saved = await async_load_pv_predictor(hass, config_entry)
+        saved = await async_load_pv_predictor(hass)
 
     hass.data["pv_production_correction"]["data"] = saved
     await pv_store.async_save(saved)
 
     # Initialise the coordinator that manages data updates from your api.
     # This is defined in coordinator.py
-    try:
-        config_entry.data[CONF_SECOND_HOME_DEVICE_ID]
+    if config_entry.data.get(CONF_SECOND_HOME_DEVICE_ID) is not None:
         coordinator = SecondHouseholdCoordinator(hass, config_entry)
         await coordinator.async_config_entry_first_refresh()
-    except KeyError:
+    else:
         coordinator = None
     scheduler = EnergyManagementCoordinator(hass, config_entry)
 

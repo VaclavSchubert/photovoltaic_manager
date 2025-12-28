@@ -204,13 +204,10 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         store = hass.data[curve]["store"]
         hass.data[curve]["data"][season]["values"][hour] = (
             hass.data[curve]["data"][season]["values"][hour]
-            * hass.data[curve]["data"][season]["count"]
+            * hass.data[curve]["data"][season]["counts"][hour]
             + new_input
-        ) / (hass.data[curve]["data"][season]["count"] + 1)
-        hass.data[curve]["data"][season]["hours"] += 1
-        if hass.data[curve]["data"][season]["hours"] >= 24:
-            hass.data[curve]["data"][season]["count"] += 1
-            hass.data[curve]["data"][season]["hours"] = 0
+        ) / (hass.data[curve]["data"][season]["counts"][hour] + 1)
+        hass.data[curve]["data"][season]["counts"][hour] += 1
         await store.async_save(hass.data[curve]["data"])
 
     async def get_hourly_proportional_average(
@@ -384,8 +381,8 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             (hour - 1) % 24,
         )
 
-        diff = last_hour_production - solar[-1]
-        solar[0] += diff
+        diff = last_hour_production
+        solar[0] -= diff
         solar[0] = max(solar[0], 0)
 
         var_solar = solar
@@ -677,7 +674,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             _LOGGER.warning([pulp.value(theta[t]) for t in range(H)])
 
         # DEBUG
-        """
+
         if pulp.LpStatus[m.status] == pulp.LpStatusOptimal:
             await self.hass.services.async_call(
                 "select",
@@ -692,7 +689,12 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             await self.hass.services.async_call(
                 "number",
                 "set_value",
-                {"entity_id": REMOTECONTROL_POWER, "value": pulp.value(grid_import[0]) if pulp.value(grid[0]) == 1 else -pulp.value(grid_export[0])},
+                {
+                    "entity_id": REMOTECONTROL_POWER,
+                    "value": pulp.value(grid_import[0])
+                    if pulp.value(grid[0]) == 1
+                    else -pulp.value(grid_export[0]),
+                },
                 blocking=True,
             )
 
@@ -722,13 +724,15 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 await self.hass.services.async_call(
                     "climate",
                     "set_hvac_mode",
-                    {"entity_id": CONF_AIR_CONDITIONING, "hvac_mode": "cool" if P_AC_therm < 0 else "heat"},
+                    {
+                        "entity_id": CONF_AIR_CONDITIONING,
+                        "hvac_mode": "cool" if P_AC_therm < 0 else "heat",
+                    },
                     blocking=True,
                 )
-        """
 
         # What is returned here is stored in self.data by the DataUpdateCoordinator
-        return EnergyData("Energy Management Coordinator", load[0], solar[0])
+        return EnergyData("Energy Management Coordinator", load[hour], solar[0])
 
 
 class SpotPriceArray:
