@@ -675,7 +675,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
         # DEBUG
 
-        if pulp.LpStatus[m.status] == pulp.LpStatusOptimal:
+        if m.status == pulp.LpStatusOptimal:
             await self.hass.services.async_call(
                 "select",
                 "select_option",
@@ -686,14 +686,14 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 blocking=True,
             )
 
+            remotecontrol_power = int((pulp.value(grid_import[0]) if pulp.value(grid[0]) == 1 else -pulp.value(grid_export[0])) * 1000)
+
             await self.hass.services.async_call(
                 "number",
                 "set_value",
                 {
                     "entity_id": REMOTECONTROL_POWER,
-                    "value": pulp.value(grid_import[0])
-                    if pulp.value(grid[0]) == 1
-                    else -pulp.value(grid_export[0]),
+                    "value": remotecontrol_power,
                 },
                 blocking=True,
             )
