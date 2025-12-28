@@ -6,7 +6,6 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
-    dataclass,
 )
 from homeassistant.const import UnitOfPower
 from homeassistant.core import HomeAssistant, callback
@@ -33,16 +32,15 @@ async def async_setup_entry(
     )
     scheduler: EnergyManagementCoordinator = config_entry.runtime_data.scheduler
 
-    try:
-        config_entry.data[CONF_SECOND_HOME_DEVICE_ID]
-        if coordinator is not None:
-            async_add_entities(
-                [
-                    SecondHouseholdConsumption(coordinator, coordinator.data.device),
-                ]
-            )
-    except KeyError:
-        pass
+    if (
+        config_entry.data.get(CONF_SECOND_HOME_DEVICE_ID) is not None
+        and coordinator is not None
+    ):
+        async_add_entities(
+            [
+                SecondHouseholdConsumption(coordinator, coordinator.data.device),
+            ]
+        )
 
     # Create the sensors.
     async_add_entities(
