@@ -748,7 +748,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 )
 
         # What is returned here is stored in self.data by the DataUpdateCoordinator
-        return EnergyData("Energy Management Coordinator", load[hour], solar[0])
+        return EnergyData("Energy Management Coordinator", load_now, solar[0])
 
 
 class SpotPriceArray:
