@@ -185,6 +185,23 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         self.poll_interval = DEFAULT_PLAN_INTERVAL
         self.spot_array = SpotPriceArray()
 
+        datetime = dt_util.now(zoneinfo.ZoneInfo(self.hass.config.time_zone))
+        month = datetime.month - 1
+        hour = datetime.hour - 1
+
+        solar_correction = self.hass.data["pv_production_correction"]["data"][
+            SEASONS_BY_MONTH[month]
+        ]["values"]  # solar forecast W each hour
+
+        solar_prediction = await self.get_hourly_proportional_average(
+            self.hass, self.forecast_pv_production_entity
+        )
+        if None in solar_prediction:
+            raise UpdateFailed(
+                f"Not enough history data to compute solar prediction for {self.forecast_pv_production_entity}"
+            )
+        self.solar_now = max(0, solar_prediction[0] - solar_correction[hour])
+
         # Initialise DataUpdateCoordinator
         super().__init__(
             hass,
@@ -302,7 +319,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         """
         datetime = dt_util.now(zoneinfo.ZoneInfo(self.hass.config.time_zone))
         month = datetime.month - 1
-        hour = datetime.hour - 1
+        hour = datetime.hour
 
         H = 24  # hours
         solar_correction = self.hass.data["pv_production_correction"]["data"][
@@ -327,7 +344,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         )  # rotate to start from current hour
         load = self.hass.data["house_load_predictor"]["data"][SEASONS_BY_MONTH[month]][
             "values"
-        ]  # load forecast W each hour
+        ].copy()  # load forecast W each hour
 
         types: set[Literal["last_reset", "max", "mean", "min", "state", "sum"]] = {
             "mean"
@@ -371,7 +388,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
         # DEBUG
         # last_hour_production = {"key": [{"mean": solar[0]}]}
-        last_hour_production = solar[-1] - list(last_hour_production.values())[0][
+        last_hour_production = self.solar_now - list(last_hour_production.values())[0][
             0
         ].get("mean")
         await self.update_predictions(
@@ -383,6 +400,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         )
 
         diff = last_hour_production
+        self.solar_now = solar[0]
         solar[0] -= diff
         solar[0] = max(solar[0], 0)
 
@@ -748,7 +766,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 )
 
         # What is returned here is stored in self.data by the DataUpdateCoordinator
-        return EnergyData("Energy Management Coordinator", load_now, solar[0])
+        return EnergyData("Energy Management Coordinator", load_now, self.solar_now)
 
 
 class SpotPriceArray:
