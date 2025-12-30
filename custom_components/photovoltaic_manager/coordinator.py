@@ -185,9 +185,22 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         self.poll_interval = DEFAULT_PLAN_INTERVAL
         self.spot_array = SpotPriceArray()
 
+        # Initialise DataUpdateCoordinator
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=f"{DOMAIN} ({config_entry.unique_id})",
+            # Method to call on every update interval.
+            update_method=self.async_update_data,
+            # Polling interval. Will only be polled if there are subscribers.
+            # Using config option here but you can just use a value.
+            update_interval=timedelta(seconds=self.poll_interval),
+        )
+
+    async def async_initialize(self):
         datetime = dt_util.now(zoneinfo.ZoneInfo(self.hass.config.time_zone))
         month = datetime.month - 1
-        hour = datetime.hour - 1
+        hour = datetime.hour
 
         solar_correction = self.hass.data["pv_production_correction"]["data"][
             SEASONS_BY_MONTH[month]
@@ -201,18 +214,6 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 f"Not enough history data to compute solar prediction for {self.forecast_pv_production_entity}"
             )
         self.solar_now = max(0, solar_prediction[0] - solar_correction[hour])
-
-        # Initialise DataUpdateCoordinator
-        super().__init__(
-            hass,
-            _LOGGER,
-            name=f"{DOMAIN} ({config_entry.unique_id})",
-            # Method to call on every update interval.
-            update_method=self.async_update_data,
-            # Polling interval. Will only be polled if there are subscribers.
-            # Using config option here but you can just use a value.
-            update_interval=timedelta(seconds=self.poll_interval),
-        )
 
     async def update_predictions(
         self, hass: HomeAssistant, curve, new_input, season, hour
