@@ -295,6 +295,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: MyConfigEntry) ->
     else:
         coordinator = None
     scheduler = EnergyManagementCoordinator(hass, config_entry)
+    await scheduler.async_initialize()
 
     # Perform an initial data load from api.
     # async_config_entry_first_refresh() is special in that it does not log errors if it fails
