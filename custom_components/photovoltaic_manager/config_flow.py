@@ -52,14 +52,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
         await hass.services.async_call(
             domain,
-            "toggle",
-            {"entity_id": data[CONF_BOILER_HEATING]},
-            blocking=True,
-        )
-
-        await hass.services.async_call(
-            domain,
-            "toggle",
+            "turn_off",
             {"entity_id": data[CONF_BOILER_HEATING]},
             blocking=True,
         )
@@ -70,13 +63,6 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
     try:
         domain, _ = data[CONF_AIR_CONDITIONING].split(".", 1)
-
-        await hass.services.async_call(
-            domain,
-            "set_hvac_mode",
-            {"entity_id": data[CONF_AIR_CONDITIONING], "value": "cool"},
-            blocking=True,
-        )
 
         await hass.services.async_call(
             domain,
