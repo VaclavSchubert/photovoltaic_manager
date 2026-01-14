@@ -157,6 +157,8 @@ async def async_load_pv_predictor(hass: HomeAssistant):
 
             power_data[season]["values"][hour] += item["mean"]
             power_data[season]["counts"][hour] += 1
+
+            last_value = item["mean"]
         except StopIteration:
             break
 
