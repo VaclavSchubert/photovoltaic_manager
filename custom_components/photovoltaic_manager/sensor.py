@@ -135,7 +135,7 @@ class CorrectedForecast(CoordinatorEntity, SensorEntity):
     ) -> None:
         """Initialize entity."""
         super().__init__(coordinator)
-        self._state: float = 0.0
+        self._state: float = self.coordinator.data.corrected_forecast
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -190,7 +190,7 @@ class HouseloadPrediction(CoordinatorEntity, SensorEntity):
     ) -> None:
         """Initialize entity."""
         super().__init__(coordinator)
-        self._state: float = 0.0
+        self._state: float = self.coordinator.data.houseload_prediction
 
     @callback
     def _handle_coordinator_update(self) -> None:
