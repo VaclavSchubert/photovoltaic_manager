@@ -181,6 +181,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         self.weather = config_entry.data.get(CONF_WEATHER_FORECAST, "")
         self.ac = config_entry.data.get(CONF_AIR_CONDITIONING, "")
         self.heater = config_entry.data.get(CONF_BOILER_HEATING, "")
+        self.heater_plan = []
         # set variables from options.  You need a default here incase options have not been set
         self.poll_interval = DEFAULT_PLAN_INTERVAL
         self.spot_array = SpotPriceArray()
@@ -337,7 +338,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
         solar = list(
             np.clip(
-                np.array(solar_prediction)
+                np.array(solar_prediction)*0.9
                 - np.array(solar_correction[hour:] + solar_correction[:hour]),
                 0,
                 None,
@@ -371,10 +372,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             (hour - 1) % 24,
         )
 
-        diff = last_hour_load - load[(hour - 1) % 24]
         load_now = load[hour]
-        load[hour] += diff
-        load[hour] = max(load[hour], 0)
 
         last_hour_production = await recorder.get_instance(
             self.hass
@@ -400,10 +398,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             (hour - 1) % 24,
         )
 
-        diff = last_hour_production
         self.solar_now = solar[0]
-        solar[0] -= diff
-        solar[0] = max(solar[0], 0)
 
         var_solar = solar
         var_load = load[hour:] + load[:hour]  # rotate to start from current hour
@@ -427,12 +422,11 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             6.7,
             6.7,
             6.7,
-            4.0,
-            4.0,
-            4.0,
-            4.0,
             6.7,
-            6.7,
+            4.0,
+            4.0,
+            4.0,
+            4.0,
             6.7,
             6.7,
             6.7,
@@ -490,7 +484,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         inverter_power_state = self.hass.states.get(self.inverter_power)
         if inverter_power_state is None:
             raise UpdateFailed(f"Entity {self.inverter_power} not found")
-        inverter_power = float(inverter_power_state.state)
+        inverter_power = float(inverter_power_state.state)/1000
         initial_soc_state = self.hass.states.get(self.initial_soc_entity)
         if initial_soc_state is None:
             raise UpdateFailed(f"Entity {self.initial_soc_entity} not found")
@@ -508,8 +502,12 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         )  # if water heater on
 
         if self.heater != "":
-            P_EWH = 3.3
-            EWH_hours = 6
+            P_EWH = 1.1
+            EWH_hours = 4
+            window_size = 3
+
+            for i in range(H - window_size + 1):
+                m += pulp.lpSum(v_E_wh[t] for t in range(i, i+window_size)) <= 1
 
             m += pulp.lpSum(v_E_wh[t] for t in range(H)) == EWH_hours
 
@@ -598,12 +596,11 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             "charge", range(H), lowBound=0, upBound=bat_power
         )
         discharge = pulp.LpVariable.dicts(
-            "discharge", range(H), lowBound=0, upBound=bat_power
+            "discharge", range(H), lowBound=0, upBound=inverter_power*0.6
         )
         soc = pulp.LpVariable.dicts(
             "soc", range(H + 1), lowBound=0, upBound=bat_capacity
         )
-        aux_charging = pulp.LpVariable.dicts("aux_charging", range(H), lowBound=0)
 
         grid = pulp.LpVariable.dicts(
             "grid", range(H), lowBound=0, upBound=1, cat=pulp.LpBinary
@@ -619,21 +616,18 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             "pen_low_soc", range(H), lowBound=0, upBound=1, cat=pulp.LpBinary
         )
 
-        penalty = pulp.LpVariable.dicts(
-            "penalty",
-            range(H),
-        )
-
         obj_sum = pulp.LpVariable.dicts("obj_sum", range(H), cat=pulp.LpContinuous)
 
         m += soc[0] == soc_initial
 
         for t in range(H):
             m += grid_import[t] <= inverter_power * grid[t]
+            m += grid_export[t] <= var_solar[t]
             m += grid_export[t] <= inverter_power * (1 - grid[t])
 
-            m += charge[t] <= var_solar[t] * battery[t]
-            m += discharge[t] <= bat_power * (1 - battery[t])
+            m += charge[t] <= var_solar[t] + grid_import[t]
+            m += charge[t] <= bat_power * battery[t] # big-M linearization
+            m += discharge[t] <= inverter_power*0.6 * (1 - battery[t])
 
             m += (
                 soc[t + 1]
@@ -641,8 +635,6 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             )
 
             m += soc[t + 1] <= self.max_soc / 100 * bat_capacity
-
-            m += aux_charging[t] == (var_solar[t] - charge[t])
 
             m += soc[t] - self.min_soc / 100 * bat_capacity <= bat_capacity * (
                 1 - pen_low_soc[t]
@@ -652,8 +644,6 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 >= -bat_capacity * pen_low_soc[t]
             )
 
-            m += penalty[t] <= 0.2 * obj_sum[t]
-            m += penalty[t] >= 0.2 * obj_sum[t] - 1 * (1 - pen_low_soc[t])
 
             m += (
                 obj_sum[t]
@@ -671,18 +661,17 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
         m += soc[H] >= soc_final_target
 
-        m += pulp.lpSum([obj_sum[t] + penalty[t] for t in range(H)])
+        m += pulp.lpSum([obj_sum[t] + pen_low_soc[t] for t in range(H)])
 
         await recorder.get_instance(self.hass).async_add_executor_job(
             m.solve, pulp.PULP_CBC_CMD(msg=False)
         )
 
-        _LOGGER.warning(pulp.LpStatus[m.status])
 
         schedule = {
             "v_AC": [pulp.value(v_AC[t]) for t in range(H)],
             "v_ewh": [pulp.value(v_E_wh[t]) for t in range(H)],
-            "penalty": [pulp.value(penalty[t]) for t in range(H)],
+            "pen_low_soc": [pulp.value(pen_low_soc[t]) for t in range(H)],
             "obj_sum": [
                 pulp.value(
                     grid_import[t] * buy_price[t] - grid_export[t] * sell_price[t]
@@ -691,7 +680,6 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             ],
             "charge": [pulp.value(charge[t]) for t in range(H)],
             "discharge": [pulp.value(discharge[t]) for t in range(H)],
-            "grid": [pulp.value(grid[t]) for t in range(H)],
             "grid_import": [pulp.value(grid_import[t]) for t in range(H)],
             "grid_export": [pulp.value(grid_export[t]) for t in range(H)],
             "soc": [pulp.value(soc[t]) for t in range(H + 1)],
@@ -747,24 +735,46 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 blocking=True,
             )
 
-            if self.heater != "" and pulp.value(v_E_wh[0]) > 0.5:
-                await self.hass.services.async_call(
-                    "switch",
-                    "turn_on",
-                    {"entity_id": CONF_BOILER_HEATING},
-                    blocking=True,
-                )
+            if self.heater != "":
+                if len(self.heater_plan) == 0 or hour == 0:
+                    self.heater_plan = [pulp.value(v_E_wh[t]) for t in range(H)]
+                    self.heater_plan = self.heater_plan[(H - hour):] + self.heater_plan[:(H - hour)]
+                if self.heater_plan[hour] > 0.5:
+                    await self.hass.services.async_call(
+                        "switch",
+                        "turn_on",
+                        {"entity_id": self.heater},
+                        blocking=True,
+                    )
+                else:
+                    await self.hass.services.async_call(
+                        "switch",
+                        "turn_off",
+                        {"entity_id": self.heater},
+                        blocking=True,
+                    )
 
-            if self.ac != "" and pulp.value(v_AC[0]) > 0.5:
-                await self.hass.services.async_call(
-                    "climate",
-                    "set_hvac_mode",
-                    {
-                        "entity_id": CONF_AIR_CONDITIONING,
-                        "hvac_mode": "cool" if P_AC_therm < 0 else "heat",
-                    },
-                    blocking=True,
-                )
+            if self.ac != "":
+                if pulp.value(v_AC[0]) > 0.5:
+                    await self.hass.services.async_call(
+                        "climate",
+                        "set_hvac_mode",
+                        {
+                            "entity_id": self.ac,
+                            "hvac_mode": "cool" if P_AC_therm < 0 else "heat",
+                        },
+                        blocking=True,
+                    )
+                else:
+                    await self.hass.services.async_call(
+                        "climate",
+                        "set_hvac_mode",
+                        {
+                            "entity_id": self.ac,
+                            "hvac_mode": "off",
+                        },
+                        blocking=True,
+                    )
 
         # What is returned here is stored in self.data by the DataUpdateCoordinator
         return EnergyData("Energy Management Coordinator", load_now, self.solar_now)
