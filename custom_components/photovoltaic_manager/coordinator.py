@@ -602,7 +602,13 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         m += soc[H] >= soc_final_target
 
         m += pulp.lpSum(
-            [obj_sum[t] + pen_low_soc[t] - v_E_wh[t] * 2 - v_AC[t] for t in range(H)]
+            [
+                obj_sum[t]
+                + pen_low_soc[t]
+                - v_E_wh[t] * 2 * min(sell_price)
+                - v_AC[t] * min(sell_price)
+                for t in range(H)
+            ]
         )
 
         await recorder.get_instance(self.hass).async_add_executor_job(
@@ -675,23 +681,20 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 "button",
                 "press",
                 {"entity_id": INVERTER_EXPORT_IMPORT},
-                blocking=True,
             )
 
             if self.heater != "":
-                if pulp.value(grid_export[0]) > P_EWH:
+                if pulp.value(v_E_wh[0]) > 0.5:
                     await self.hass.services.async_call(
                         "switch",
                         "turn_on",
                         {"entity_id": self.heater},
-                        blocking=True,
                     )
                 else:
                     await self.hass.services.async_call(
                         "switch",
                         "turn_off",
                         {"entity_id": self.heater},
-                        blocking=True,
                     )
 
             if self.ac != "":
@@ -703,7 +706,6 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                             "entity_id": self.ac,
                             "hvac_mode": "cool" if cool_mode is True else "heat",
                         },
-                        blocking=True,
                     )
                 else:
                     await self.hass.services.async_call(
@@ -713,7 +715,6 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                             "entity_id": self.ac,
                             "hvac_mode": "off",
                         },
-                        blocking=True,
                     )
 
         # What is returned here is stored in self.data by the DataUpdateCoordinator
@@ -780,7 +781,7 @@ class SecondHouseholdCoordinator(DataUpdateCoordinator):
             state=res["status"]["em:0"]["total_act_power"],
         )
 
-        if self.manager.surplus > device.state:
+        if self.manager.surplus > float(device.state) / 3600 * MIN_SCAN_INTERVAL:
             await self.hass.services.async_call(
                 "number",
                 "set_value",
@@ -788,9 +789,17 @@ class SecondHouseholdCoordinator(DataUpdateCoordinator):
                     "entity_id": REMOTECONTROL_POWER,
                     "value": -int(device.state),
                 },
-                blocking=True,
             )
-            self.manager.surplus -= device.state
+            self.manager.surplus -= float(device.state) / 3600 * MIN_SCAN_INTERVAL
+        else:
+            await self.hass.services.async_call(
+                "number",
+                "set_value",
+                {
+                    "entity_id": REMOTECONTROL_POWER,
+                    "value": 0,
+                },
+            )
 
         return APIData("Second household Coordinator", device)
 
