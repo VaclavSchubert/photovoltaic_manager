@@ -596,7 +596,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 + grid_export[t]
             )
 
-            m += var_solar[t] - charge[t] >= -M * (1 - appliances[t])
+            m += var_solar[t] - charge[t] - var_load[t] >= -M * (1 - appliances[t])
             m += v_E_wh[t] * P_EWH + v_AC[t] * P_AC_el <= M * appliances[t]
 
         m += soc[H] >= soc_final_target
