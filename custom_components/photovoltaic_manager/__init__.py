@@ -291,17 +291,17 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: MyConfigEntry) ->
 
     # Initialise the coordinator that manages data updates from your api.
     # This is defined in coordinator.py
-    if config_entry.data.get(CONF_SECOND_HOME_DEVICE_ID) is not None:
-        coordinator = SecondHouseholdCoordinator(hass, config_entry)
-        await coordinator.async_config_entry_first_refresh()
-    else:
-        coordinator = None
     scheduler = EnergyManagementCoordinator(hass, config_entry)
     await scheduler.async_initialize()
-
     # Perform an initial data load from api.
     # async_config_entry_first_refresh() is special in that it does not log errors if it fails
     await scheduler.async_config_entry_first_refresh()
+
+    if config_entry.data.get(CONF_SECOND_HOME_DEVICE_ID) is not None:
+        coordinator = SecondHouseholdCoordinator(hass, config_entry, scheduler)
+        await coordinator.async_config_entry_first_refresh()
+    else:
+        coordinator = None
 
     # Add the coordinator and update listener to config runtime data to make
     # accessible throughout your integration
