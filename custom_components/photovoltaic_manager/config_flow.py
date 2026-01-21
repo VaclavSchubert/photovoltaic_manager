@@ -17,7 +17,6 @@ from homeassistant.helpers.selector import selector
 
 from .const import (
     COMBI_HEATER,
-    ELETRIC_HEATER,
     CONF_AIR_CONDITIONING,
     CONF_BATTERY_CAPACITY,
     CONF_ELECTRICITY_PRICE,
@@ -32,6 +31,7 @@ from .const import (
     CONF_SECOND_HOME_SERVER,
     CONF_WEATHER_FORECAST,
     DOMAIN,
+    ELECTRIC_HEATER,
     REAL_PV_PRODUCTION,
 )
 
@@ -212,7 +212,8 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_HEATER_TYPE): selector(
                     {
                         "select": {
-                            "options": [COMBI_HEATER, ELETRIC_HEATER],
+                            "options": [COMBI_HEATER, ELECTRIC_HEATER],
+                            "translation_key": "heater_type",
                             "multiple": False,
                         }
                     }
@@ -321,7 +322,8 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_HEATER_TYPE): selector(
                     {
                         "select": {
-                            "options": [COMBI_HEATER, ELETRIC_HEATER],
+                            "options": [COMBI_HEATER, ELECTRIC_HEATER],
+                            "translation_key": "heater_type",
                             "multiple": False,
                         }
                     }

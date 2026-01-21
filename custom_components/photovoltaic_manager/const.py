@@ -11,7 +11,7 @@ DEFAULT_SCAN_INTERVAL = 7
 MIN_SCAN_INTERVAL = 14
 DEFAULT_PLAN_INTERVAL = 3600  # 1 hour
 COMBI_HEATER = "combi_heater"
-ELETRIC_HEATER = "electric_heater"
+ELECTRIC_HEATER = "electric_heater"
 
 
 # Required configuration keys

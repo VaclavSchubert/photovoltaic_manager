@@ -39,7 +39,7 @@ from .const import (
     CONF_WEATHER_FORECAST,
     DEFAULT_PLAN_INTERVAL,
     DOMAIN,
-    ELETRIC_HEATER,
+    ELECTRIC_HEATER,
     HAS_TOMORROW_SPOT_DATA,
     HOUSEHOLD_CONSUMPTION,
     INVERTER_EXPORT_IMPORT,
@@ -97,85 +97,6 @@ class EnergyData:
     controller_name: str
     houseload_prediction: float
     corrected_forecast: float
-
-
-class SecondHouseholdCoordinator(DataUpdateCoordinator):
-    """Coordinator to periodically query the Shelly API about energy consumption in the second household."""
-
-    data: APIData
-
-    def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry) -> None:
-        """Initialize coordinator."""
-
-        # Set variables from values entered in config flow setup
-        self.host = config_entry.data[CONF_SECOND_HOME_SERVER]
-        self.api_key = config_entry.data[CONF_SECOND_HOME_API_KEY]
-        self.device_id = config_entry.data[CONF_SECOND_HOME_DEVICE_ID]
-
-        self.url = f"{self.host}/v2/devices/api/get?auth_key={self.api_key}"
-        self.payload = {"ids": [self.device_id], "select": ["status"]}
-        self.headers = {"Content-Type": "application/json"}
-        self.manager = config_entry.runtime_data.scheduler
-
-        # set variables from options.  You need a default here incase options have not been set
-        self.poll_interval = MIN_SCAN_INTERVAL
-
-        # Initialise DataUpdateCoordinator
-        super().__init__(
-            hass,
-            _LOGGER,
-            name=f"{DOMAIN} ({config_entry.unique_id})",
-            # Method to call on every update interval.
-            update_method=self.async_update_data,
-            # Polling interval. Will only be polled if there are subscribers.
-            # Using config option here but you can just use a value.
-            update_interval=timedelta(seconds=self.poll_interval),
-        )
-
-    async def async_update_data(self):
-        """Fetch data from API endpoint.
-
-        This is the place to pre-process the data to lookup tables
-        so entities can quickly look up their data.
-        """
-        try:
-            response = await recorder.get_instance(self.hass).async_add_executor_job(
-                self.send_request, self.url, self.payload, self.headers
-            )
-        except Exception as err:
-            # This will show entities as unavailable by raising UpdateFailed exception
-            raise UpdateFailed(f"Error communicating with API: {err}") from err
-
-        # What is returned here is stored in self.data by the DataUpdateCoordinator
-        res = response.json()[0]
-        device = Device(
-            device_id=res["id"],
-            name=res["code"],
-            state=res["status"]["em:0"]["total_act_power"],
-        )
-
-        if self.manager.surplus > device.state:
-            await self.hass.services.async_call(
-                "number",
-                "set_value",
-                {
-                    "entity_id": REMOTECONTROL_POWER,
-                    "value": -int(device.state),
-                },
-                blocking=True,
-            )
-            self.manager.surplus -= device.state
-
-        return APIData("Second household Coordinator", device)
-
-    def send_request(self, url, payload, headers):
-        """Send request."""
-        return requests.post(
-            url,
-            json=payload,
-            headers=headers,
-            timeout=3,
-        )
 
 
 class EnergyManagementCoordinator(DataUpdateCoordinator):
@@ -577,7 +498,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         if self.heater != "":
             P_EWH = self.heater_power
 
-            if self.heater_type == ELETRIC_HEATER:
+            if self.heater_type == ELECTRIC_HEATER:
                 EWH_hours = (
                     self.heater_volume * 5 / self.heater_power / 100
                 )  # hours to heat water
@@ -705,8 +626,8 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             "soc": [pulp.value(soc[t]) for t in range(H + 1)],
         }
 
-        _LOGGER.debug(m.status)
-        _LOGGER.debug(schedule)
+        _LOGGER.warning(pulp.LpStatus[m.status])
+        _LOGGER.warning(schedule)
 
         if m.status == pulp.LpStatusOptimal:
             await self.hass.services.async_call(
@@ -719,7 +640,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 blocking=True,
             )
 
-            self.surplus = grid_export[0]*1000
+            self.surplus = pulp.value(grid_export[0]) * 1000
 
             remotecontrol_power = int(
                 (
@@ -797,6 +718,90 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
         # What is returned here is stored in self.data by the DataUpdateCoordinator
         return EnergyData("Energy Management Coordinator", load_now, self.solar_now)
+
+
+class SecondHouseholdCoordinator(DataUpdateCoordinator):
+    """Coordinator to periodically query the Shelly API about energy consumption in the second household."""
+
+    data: APIData
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        config_entry: ConfigEntry,
+        scheduler: EnergyManagementCoordinator,
+    ) -> None:
+        """Initialize coordinator."""
+
+        # Set variables from values entered in config flow setup
+        self.host = config_entry.data[CONF_SECOND_HOME_SERVER]
+        self.api_key = config_entry.data[CONF_SECOND_HOME_API_KEY]
+        self.device_id = config_entry.data[CONF_SECOND_HOME_DEVICE_ID]
+
+        self.url = f"{self.host}/v2/devices/api/get?auth_key={self.api_key}"
+        self.payload = {"ids": [self.device_id], "select": ["status"]}
+        self.headers = {"Content-Type": "application/json"}
+        self.manager = scheduler
+
+        # set variables from options.  You need a default here incase options have not been set
+        self.poll_interval = MIN_SCAN_INTERVAL
+
+        # Initialise DataUpdateCoordinator
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=f"{DOMAIN} ({config_entry.unique_id})",
+            # Method to call on every update interval.
+            update_method=self.async_update_data,
+            # Polling interval. Will only be polled if there are subscribers.
+            # Using config option here but you can just use a value.
+            update_interval=timedelta(seconds=self.poll_interval),
+        )
+
+    async def async_update_data(self):
+        """Fetch data from API endpoint.
+
+        This is the place to pre-process the data to lookup tables
+        so entities can quickly look up their data.
+        """
+        try:
+            response = await recorder.get_instance(self.hass).async_add_executor_job(
+                self.send_request, self.url, self.payload, self.headers
+            )
+        except Exception as err:
+            # This will show entities as unavailable by raising UpdateFailed exception
+            raise UpdateFailed(f"Error communicating with API: {err}") from err
+
+        # What is returned here is stored in self.data by the DataUpdateCoordinator
+        res = response.json()[0]
+        device = Device(
+            device_id=res["id"],
+            name=res["code"],
+            state=res["status"]["em:0"]["total_act_power"],
+        )
+
+        if self.manager.surplus > device.state:
+            await self.hass.services.async_call(
+                "number",
+                "set_value",
+                {
+                    "entity_id": REMOTECONTROL_POWER,
+                    "value": -int(device.state),
+                },
+                blocking=True,
+            )
+            self.manager.surplus -= device.state
+
+        return APIData("Second household Coordinator", device)
+
+    def send_request(self, url, payload, headers):
+        """Send request."""
+        return requests.post(
+            url,
+            json=payload,
+            headers=headers,
+            timeout=3,
+        )
 
 
 class SpotPriceArray:
