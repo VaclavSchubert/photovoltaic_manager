@@ -16,9 +16,15 @@ import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.selector import selector
 
 from .const import (
+    COMBI_HEATER,
+    ELETRIC_HEATER,
     CONF_AIR_CONDITIONING,
     CONF_BATTERY_CAPACITY,
-    CONF_BOILER_HEATING,
+    CONF_ELECTRICITY_PRICE,
+    CONF_HEATER_ENTITY,
+    CONF_HEATER_POWER,
+    CONF_HEATER_TYPE,
+    CONF_HEATER_VOLUME,
     CONF_MAX_SOC,
     CONF_MIN_SOC,
     CONF_SECOND_HOME_API_KEY,
@@ -47,17 +53,37 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
     """
 
+    heater_fields = (
+        CONF_HEATER_ENTITY,
+        CONF_HEATER_POWER,
+        CONF_HEATER_VOLUME,
+        CONF_HEATER_TYPE,
+    )
+
+    heater_filled = [bool(data.get(f)) for f in heater_fields]
+
+    if data[CONF_MIN_SOC] >= data[CONF_MAX_SOC]:
+        raise InvalidBatterySettings
+    if data[CONF_MIN_SOC] < 0 or data[CONF_MAX_SOC] > 100:
+        raise InvalidBatterySettings
+    if data[CONF_BATTERY_CAPACITY] <= 0:
+        raise InvalidBatterySettings
+
     try:
-        domain, _ = data[CONF_BOILER_HEATING].split(".", 1)
+        domain, _ = data[CONF_HEATER_ENTITY].split(".", 1)
 
         await hass.services.async_call(
             domain,
             "turn_off",
-            {"entity_id": data[CONF_BOILER_HEATING]},
+            {"entity_id": data[CONF_HEATER_ENTITY]},
             blocking=True,
         )
+        if any(heater_filled) and not all(heater_filled):
+            raise InvalidHeaterSettings
     except KeyError:
-        data[CONF_BOILER_HEATING] = ""
+        data[CONF_HEATER_ENTITY] = ""
+    except InvalidHeaterSettings:
+        raise InvalidHeaterSettings from InvalidHeaterSettings
     except Exception:  # noqa: BLE001
         raise ApplianceNoncontrollable from Exception
 
@@ -139,6 +165,8 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "weather_invalid_state"
             except ApplianceNoncontrollable:
                 errors["base"] = "appliance_noncontrollable"
+            except InvalidBatterySettings:
+                errors["base"] = "invalid_battery_settings"
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
@@ -151,6 +179,7 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
 
         schema = vol.Schema(
             {
+                vol.Required(CONF_ELECTRICITY_PRICE): cv.string,
                 vol.Required(CONF_MIN_SOC): vol.Coerce(int),
                 vol.Required(CONF_MAX_SOC): vol.Coerce(int),
                 vol.Required(CONF_BATTERY_CAPACITY): vol.Coerce(float),
@@ -170,10 +199,20 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                         }
                     }
                 ),
-                vol.Optional(CONF_BOILER_HEATING): selector(
+                vol.Optional(CONF_HEATER_ENTITY): selector(
                     {
                         "entity": {
                             "domain": ["switch"],
+                            "multiple": False,
+                        }
+                    }
+                ),
+                vol.Optional(CONF_HEATER_POWER): vol.Coerce(float),
+                vol.Optional(CONF_HEATER_VOLUME): vol.Coerce(int),
+                vol.Optional(CONF_HEATER_TYPE): selector(
+                    {
+                        "select": {
+                            "options": [COMBI_HEATER, ELETRIC_HEATER],
                             "multiple": False,
                         }
                     }
@@ -216,6 +255,8 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "weather_invalid_state"
             except ApplianceNoncontrollable:
                 errors["base"] = "appliance_noncontrollable"
+            except InvalidBatterySettings:
+                errors["base"] = "invalid_battery_settings"
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
@@ -229,6 +270,10 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
 
         schema = vol.Schema(
             {
+                vol.Required(
+                    CONF_ELECTRICITY_PRICE,
+                    default=config_entry.data.get(CONF_ELECTRICITY_PRICE, ""),
+                ): cv.string,
                 vol.Required(
                     CONF_MIN_SOC,
                     default=config_entry.data.get(CONF_MIN_SOC, 20),
@@ -262,11 +307,21 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                     }
                 ),
                 vol.Optional(
-                    CONF_BOILER_HEATING,
+                    CONF_HEATER_ENTITY,
                 ): selector(
                     {
                         "entity": {
                             "domain": ["switch"],
+                            "multiple": False,
+                        }
+                    }
+                ),
+                vol.Optional(CONF_HEATER_POWER): vol.Coerce(float),
+                vol.Optional(CONF_HEATER_VOLUME): vol.Coerce(int),
+                vol.Optional(CONF_HEATER_TYPE): selector(
+                    {
+                        "select": {
+                            "options": [COMBI_HEATER, ELETRIC_HEATER],
                             "multiple": False,
                         }
                     }
@@ -308,3 +363,11 @@ class WeatherInvalidState(HomeAssistantError):
 
 class ApplianceNoncontrollable(HomeAssistantError):
     """Error to indicate appliance is non-controllable."""
+
+
+class InvalidBatterySettings(HomeAssistantError):
+    """Error to indicate battery is setup incorrectly."""
+
+
+class InvalidHeaterSettings(HomeAssistantError):
+    """Error to indicate heater is setup incorrectly."""

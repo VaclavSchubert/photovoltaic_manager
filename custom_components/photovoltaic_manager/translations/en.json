@@ -11,18 +11,24 @@
       "solax_invalid_state": "Solax entity is unavailable or in unknown state",
       "weather_invalid_state": "Weather entity is unavailable, in unknown state, or missing attributes",
       "appliance_noncontrollable": "One or more selected appliances are not controllable",
+      "invalid_battery_settings": "Invalid battery settings",
+      "invalid_heater_settings": "Invalid heater settings",
       "unknown": "Unexpected error"
     },
     "step": {
       "user": {
         "title": "Configure Photovoltaic Manager",
         "data": {
+          "electricity_price": "Hourly Electricity Import Prices (JSON Array)",
           "min_soc": "Minimum State of Charge",
           "max_soc": "Maximum State of Charge",
-          "battery_capacity": "Battery Capacity (kWh)",
+          "battery_capacity": "Battery Capacity [kWh]",
           "weather_forecast": "Entity of Weather Forecast",
           "air_conditioning": "Air Conditioning to Control (Optional)",
-          "boiler_heating": "Boiler Heating to Control (Optional)",
+          "heater_entity": "Heater Entity to Control (Optional)",
+          "heater_type": "Heater Type (Optional)",
+          "heater_volume": "Heater Volume [l] (Optional)",
+          "heater_power": "Heater Power [kW] (Optional)",
           "second_home_server": "Second Home Server (Optional)",
           "second_home_api_key": "Second Home API Key (Optional)",
           "second_home_device_id": "Second Home Device ID (Optional)"
@@ -30,12 +36,16 @@
       },
       "reconfigure": {
         "data": {
+          "electricity_price": "Hourly Electricity Import Prices (JSON Array)",
           "min_soc": "Minimum State of Charge",
           "max_soc": "Maximum State of Charge",
-          "battery_capacity": "Battery Capacity (kWh)",
+          "battery_capacity": "Battery Capacity [kWh]",
           "weather_forecast": "Entity of Weather Forecast",
           "air_conditioning": "Air Conditioning to Control (Optional)",
-          "boiler_heating": "Boiler Heating to Control (Optional)",
+          "heater_entity": "Heater Entity to Control (Optional)",
+          "heater_type": "Heater Type (Optional)",
+          "heater_volume": "Heater Volume [l] (Optional)",
+          "heater_power": "Heater Power [kW] (Optional)",
           "second_home_server": "Second Home Server (Optional)",
           "second_home_api_key": "Second Home API Key (Optional)",
           "second_home_device_id": "Second Home Device ID (Optional)"

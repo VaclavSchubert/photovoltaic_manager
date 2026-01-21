@@ -7,9 +7,11 @@ DOMAIN = "photovoltaic_manager"
 # Platforms (if your integration has multiple platforms like sensor, switch)
 PLATFORMS = [Platform.SENSOR]
 
-DEFAULT_SCAN_INTERVAL = 14
-MIN_SCAN_INTERVAL = 7
+DEFAULT_SCAN_INTERVAL = 7
+MIN_SCAN_INTERVAL = 14
 DEFAULT_PLAN_INTERVAL = 3600  # 1 hour
+COMBI_HEATER = "combi_heater"
+ELETRIC_HEATER = "electric_heater"
 
 
 # Required configuration keys
@@ -22,6 +24,8 @@ INVERTER_EXPORT_IMPORT = "button.solax_remotecontrol_trigger"
 REMOTECONTROL_POWER = "number.solax_remotecontrol_active_power"
 REMOTECONTROL_MODE = "select.solax_remotecontrol_power_control"
 REMOTECONTROL_DURATION = "number.solax_remotecontrol_autorepeat_duration"
+BATTERY_VOLTAGE_CHARGE = "sensor.solax_battery_voltage_charge"
+BATTERY_CURRENT_CHARGE = "number.solax_battery_discharge_max_current"
 
 # forecast_solar
 PV_PRODUCTION_FORECAST_TODAY = "sensor.power_production_now"
@@ -32,13 +36,16 @@ SPOT_MARKET_TODAY_ORDER = "sensor.current_spot_electricity_hour_order"
 HAS_TOMORROW_SPOT_DATA = "binary_sensor.spot_electricity_has_tomorrow_data"
 SPOT_MARKET_TOMORROW_ORDER = "sensor.tomorrow_spot_electricity_hour_order"
 
-
+CONF_ELECTRICITY_PRICE = "electricity_price"
 CONF_MIN_SOC = "min_soc"  # number input field
 CONF_MAX_SOC = "max_soc"  # number input field
 CONF_BATTERY_CAPACITY = "battery_capacity"  # number input field
 CONF_WEATHER_FORECAST = "weather_forecast"
 CONF_AIR_CONDITIONING = "air_conditioning"  # climate to control
-CONF_BOILER_HEATING = "boiler_heating"  # switch to control
+CONF_HEATER_ENTITY = "heater_entity"  # switch to control
+CONF_HEATER_TYPE = "heater_type"  # select combi or electric
+CONF_HEATER_VOLUME = "heater_volume"  # number input field
+CONF_HEATER_POWER = "heater_power"  # number input field
 
 # Optional configuration
 CONF_SECOND_HOME_SERVER = "second_home_server"  # input text field
