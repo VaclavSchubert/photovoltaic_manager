@@ -52,5 +52,11 @@
         }
       }
     }
+  },
+  "select": {
+    "heater_type": {
+      "combi_heater": "Combi Heater (electric + gas, oil, ...)",
+      "electric_heater": "Electric Heater"
+    }
   }
 }
