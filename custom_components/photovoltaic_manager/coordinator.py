@@ -104,6 +104,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
     data: EnergyData
     surplus = 0.0
+    grid_access = False
 
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry) -> None:
         """Initialize coordinator."""
@@ -423,7 +424,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         m = pulp.LpProblem("EnergyManagement", pulp.LpMinimize)
 
         bat_capacity = self.bat_capacity  # kWh
-        bat_power = self.battery_current * self.battery_voltage / 1000  # kW
+        bat_power = self.battery_current * self.battery_voltage / 1000 * 0.5  # W
         inverter_power = 9  # kW
         eff_charge = 0.97
         eff_discharge = 0.95
@@ -431,7 +432,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         soc_final_target = (
             (
                 self.min_soc
-                + (self.max_soc - self.min_soc) * (1 - np.sin(np.pi * month / 11))
+                + (self.max_soc - self.min_soc) * (1 - np.sin(np.pi * month / 11) / 2)
             )
             / 100
             * bat_capacity
@@ -448,8 +449,8 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Entity {self.initial_soc_entity} not found")
         soc_initial = float(initial_soc_state.state) / 100.0 * bat_capacity  # kWh
 
-        P_EWH = 1000.0
-        P_AC_el = 1000.0
+        P_EWH = 10000.0
+        P_AC_el = 10000.0
         cool_mode = False
 
         # Decision variables
@@ -482,7 +483,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
         obj_sum = pulp.LpVariable.dicts("obj_sum", range(H), cat=pulp.LpContinuous)
 
-        M = 10000  # big-M constant
+        M = 1000  # big-M constant
 
         v_AC = pulp.LpVariable.dicts(
             "v_AC", range(H), lowBound=0, upBound=1, cat=pulp.LpBinary
@@ -565,14 +566,12 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
             m += charge[t] <= var_solar[t] + grid_import[t]
             m += charge[t] <= bat_power * battery[t]  # big-M linearization
-            m += discharge[t] <= inverter_power * 0.6 * (1 - battery[t])
+            m += discharge[t] <= bat_power * (1 - battery[t])
 
             m += (
                 soc[t + 1]
                 == soc[t] + charge[t] * eff_charge - discharge[t] / eff_discharge
             )
-
-            m += soc[t + 1] <= self.max_soc / 100 * bat_capacity
 
             m += soc[t] - self.min_soc / 100 * bat_capacity <= bat_capacity * (
                 1 - pen_low_soc[t]
@@ -582,10 +581,9 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 >= -bat_capacity * pen_low_soc[t]
             )
 
-            m += (
-                obj_sum[t]
-                == grid_import[t] * buy_price[t] - grid_export[t] * sell_price[t]
-            )
+            m += obj_sum[t] == grid_import[t] * buy_price[t] * (
+                1 + 1.2 / buy_price[t]
+            ) - grid_export[t] * (sell_price[t] - min(buy_price))
 
             m += (
                 var_solar[t] + grid_import[t] + discharge[t]
@@ -605,8 +603,9 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             [
                 obj_sum[t]
                 + pen_low_soc[t]
-                - v_E_wh[t] * 2 * min(sell_price)
-                - v_AC[t] * min(sell_price)
+                - charge[t] * 1.2
+                - v_E_wh[t] * 1.1
+                - v_AC[t]
                 for t in range(H)
             ]
         )
@@ -659,6 +658,10 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
             if remotecontrol_power < 0 and sell_price[0] < 2 * min(buy_price):
                 remotecontrol_power = 0
+
+            self.grid_access = False
+            if remotecontrol_power != 0:
+                self.grid_access = True
 
             await self.hass.services.async_call(
                 "number",
@@ -781,25 +784,28 @@ class SecondHouseholdCoordinator(DataUpdateCoordinator):
             state=res["status"]["em:0"]["total_act_power"],
         )
 
-        if self.manager.surplus > float(device.state) / 3600 * MIN_SCAN_INTERVAL:
-            await self.hass.services.async_call(
-                "number",
-                "set_value",
-                {
-                    "entity_id": REMOTECONTROL_POWER,
-                    "value": -int(device.state),
-                },
-            )
-            self.manager.surplus -= float(device.state) / 3600 * MIN_SCAN_INTERVAL
-        else:
-            await self.hass.services.async_call(
-                "number",
-                "set_value",
-                {
-                    "entity_id": REMOTECONTROL_POWER,
-                    "value": 0,
-                },
-            )
+        if self.manager.grid_access is False:
+            if self.manager.surplus > float(device.state) / 3600 * MIN_SCAN_INTERVAL:
+                await self.hass.services.async_call(
+                    "number",
+                    "set_value",
+                    {
+                        "entity_id": REMOTECONTROL_POWER,
+                        "value": -int(device.state),
+                    },
+                    blocking=True,
+                )
+                self.manager.surplus -= float(device.state) / 3600 * MIN_SCAN_INTERVAL
+            else:
+                await self.hass.services.async_call(
+                    "number",
+                    "set_value",
+                    {
+                        "entity_id": REMOTECONTROL_POWER,
+                        "value": 0,
+                    },
+                    blocking=True,
+                )
 
         return APIData("Second household Coordinator", device)
 
