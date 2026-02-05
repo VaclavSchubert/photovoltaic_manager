@@ -16,23 +16,35 @@ import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.selector import selector
 
 from .const import (
+    BUY_PRICE_MODE_FIXED,
+    BUY_PRICE_MODE_SPOT,
     COMBI_HEATER,
     CONF_AIR_CONDITIONING,
     CONF_BATTERY_CAPACITY,
+    CONF_BUY_DISTRIBUTION_COST,
+    CONF_BUY_PRICE_MODE,
     CONF_ELECTRICITY_PRICE,
     CONF_HEATER_ENTITY,
     CONF_HEATER_POWER,
     CONF_HEATER_TYPE,
     CONF_HEATER_VOLUME,
+    CONF_INTEGRATION_MODE,
     CONF_MAX_SOC,
     CONF_MIN_SOC,
     CONF_SECOND_HOME_API_KEY,
+    CONF_SECOND_HOME_AVG_POWER,
     CONF_SECOND_HOME_DEVICE_ID,
+    CONF_SECOND_HOME_MODE,
     CONF_SECOND_HOME_SERVER,
     CONF_WEATHER_FORECAST,
     DOMAIN,
     ELECTRIC_HEATER,
+    INTEGRATION_MODE_MANAGE,
+    INTEGRATION_MODE_OBSERVE,
     REAL_PV_PRODUCTION,
+    SECOND_HOME_MODE_FULL,
+    SECOND_HOME_MODE_SURPLUS,
+    SECOND_HOME_MODE_VIEW,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -105,6 +117,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         CONF_SECOND_HOME_API_KEY,
         CONF_SECOND_HOME_DEVICE_ID,
         CONF_SECOND_HOME_SERVER,
+        CONF_SECOND_HOME_MODE,
     )
 
     shelly_filled = [bool(data.get(f)) for f in shelly_fields]
@@ -112,6 +125,15 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     if any(shelly_filled) and not all(shelly_filled):
         raise InvalidAuth
     if all(shelly_filled):
+        if data[CONF_SECOND_HOME_MODE] == SECOND_HOME_MODE_FULL and not bool(
+            data.get(CONF_SECOND_HOME_AVG_POWER)
+        ):
+            raise SecondHomeModeInvalid
+
+        if data[CONF_SECOND_HOME_MODE] == SECOND_HOME_MODE_FULL:
+            if data[CONF_SECOND_HOME_AVG_POWER] <= 0:
+                raise SecondHomeModeInvalid
+
         url = f"{data[CONF_SECOND_HOME_SERVER]}/v2/devices/api/get?auth_key={data[CONF_SECOND_HOME_API_KEY]}"
         payload = {"ids": [data[CONF_SECOND_HOME_DEVICE_ID]], "select": ["status"]}
         headers = {"Content-Type": "application/json"}
@@ -167,6 +189,8 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "appliance_noncontrollable"
             except InvalidBatterySettings:
                 errors["base"] = "invalid_battery_settings"
+            except SecondHomeModeInvalid:
+                errors["base"] = "second_home_mode_invalid"
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
@@ -179,6 +203,28 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
 
         schema = vol.Schema(
             {
+                vol.Required(CONF_INTEGRATION_MODE): selector(
+                    {
+                        "select": {
+                            "options": [
+                                INTEGRATION_MODE_OBSERVE,
+                                INTEGRATION_MODE_MANAGE,
+                            ],
+                            "translation_key": "integration_mode",
+                            "multiple": False,
+                        }
+                    }
+                ),
+                vol.Required(CONF_BUY_PRICE_MODE): selector(
+                    {
+                        "select": {
+                            "options": [BUY_PRICE_MODE_FIXED, BUY_PRICE_MODE_SPOT],
+                            "translation_key": "buy_price_mode",
+                            "multiple": False,
+                        }
+                    }
+                ),
+                vol.Required(CONF_BUY_DISTRIBUTION_COST): cv.string,
                 vol.Required(CONF_ELECTRICITY_PRICE): cv.string,
                 vol.Required(CONF_MIN_SOC): vol.Coerce(int),
                 vol.Required(CONF_MAX_SOC): vol.Coerce(int),
@@ -221,6 +267,20 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_SECOND_HOME_SERVER): cv.string,
                 vol.Optional(CONF_SECOND_HOME_API_KEY): cv.string,
                 vol.Optional(CONF_SECOND_HOME_DEVICE_ID): cv.string,
+                vol.Optional(CONF_SECOND_HOME_MODE): selector(
+                    {
+                        "select": {
+                            "options": [
+                                SECOND_HOME_MODE_VIEW,
+                                SECOND_HOME_MODE_SURPLUS,
+                                SECOND_HOME_MODE_FULL,
+                            ],
+                            "translation_key": "second_home_mode",
+                            "multiple": False,
+                        }
+                    }
+                ),
+                vol.Optional(CONF_SECOND_HOME_AVG_POWER): vol.Coerce(float),
             }
         )
 
@@ -258,6 +318,8 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "appliance_noncontrollable"
             except InvalidBatterySettings:
                 errors["base"] = "invalid_battery_settings"
+            except SecondHomeModeInvalid:
+                errors["base"] = "second_home_mode_invalid"
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
@@ -271,6 +333,37 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
 
         schema = vol.Schema(
             {
+                vol.Required(
+                    CONF_INTEGRATION_MODE,
+                    default=config_entry.data.get(CONF_INTEGRATION_MODE, "observe"),
+                ): selector(
+                    {
+                        "select": {
+                            "options": [
+                                INTEGRATION_MODE_OBSERVE,
+                                INTEGRATION_MODE_MANAGE,
+                            ],
+                            "translation_key": "integration_mode",
+                            "multiple": False,
+                        }
+                    }
+                ),
+                vol.Required(
+                    CONF_BUY_PRICE_MODE,
+                    default=config_entry.data.get(CONF_BUY_PRICE_MODE, "fixed"),
+                ): selector(
+                    {
+                        "select": {
+                            "options": [BUY_PRICE_MODE_FIXED, BUY_PRICE_MODE_SPOT],
+                            "translation_key": "buy_price_mode",
+                            "multiple": False,
+                        }
+                    }
+                ),
+                vol.Required(
+                    CONF_BUY_DISTRIBUTION_COST,
+                    default=config_entry.data.get(CONF_BUY_DISTRIBUTION_COST, ""),
+                ): cv.string,
                 vol.Required(
                     CONF_ELECTRICITY_PRICE,
                     default=config_entry.data.get(CONF_ELECTRICITY_PRICE, ""),
@@ -337,6 +430,26 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Optional(
                     CONF_SECOND_HOME_DEVICE_ID,
                 ): cv.string,
+                vol.Optional(
+                    CONF_SECOND_HOME_MODE,
+                    default=config_entry.data.get(CONF_SECOND_HOME_MODE, "view"),
+                ): selector(
+                    {
+                        "select": {
+                            "options": [
+                                SECOND_HOME_MODE_VIEW,
+                                SECOND_HOME_MODE_SURPLUS,
+                                SECOND_HOME_MODE_FULL,
+                            ],
+                            "translation_key": "second_home_mode",
+                            "multiple": False,
+                        }
+                    }
+                ),
+                vol.Optional(
+                    CONF_SECOND_HOME_AVG_POWER,
+                    default=config_entry.data.get(CONF_SECOND_HOME_AVG_POWER, 0.0),
+                ): vol.Coerce(float),
             }
         )
 
@@ -373,3 +486,7 @@ class InvalidBatterySettings(HomeAssistantError):
 
 class InvalidHeaterSettings(HomeAssistantError):
     """Error to indicate heater is setup incorrectly."""
+
+
+class SecondHomeModeInvalid(HomeAssistantError):
+    """Error to indicate second home mode is setup incorrectly."""

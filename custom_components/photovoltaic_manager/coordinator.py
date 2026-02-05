@@ -23,18 +23,24 @@ from .const import (
     BATTERY_CURRENT_CHARGE,
     BATTERY_STATUS,
     BATTERY_VOLTAGE_CHARGE,
+    BUY_PRICE_MODE_FIXED,
     COMBI_HEATER,
     CONF_AIR_CONDITIONING,
     CONF_BATTERY_CAPACITY,
+    CONF_BUY_DISTRIBUTION_COST,
+    CONF_BUY_PRICE_MODE,
     CONF_ELECTRICITY_PRICE,
     CONF_HEATER_ENTITY,
     CONF_HEATER_POWER,
     CONF_HEATER_TYPE,
     CONF_HEATER_VOLUME,
+    CONF_INTEGRATION_MODE,
     CONF_MAX_SOC,
     CONF_MIN_SOC,
     CONF_SECOND_HOME_API_KEY,
+    CONF_SECOND_HOME_AVG_POWER,
     CONF_SECOND_HOME_DEVICE_ID,
+    CONF_SECOND_HOME_MODE,
     CONF_SECOND_HOME_SERVER,
     CONF_WEATHER_FORECAST,
     DEFAULT_PLAN_INTERVAL,
@@ -42,7 +48,11 @@ from .const import (
     ELECTRIC_HEATER,
     HAS_TOMORROW_SPOT_DATA,
     HOUSEHOLD_CONSUMPTION,
+    INTEGRATION_MODE_MANAGE,
+    INTEGRATION_MODE_OBSERVE,
+    INVERTER_EXPORT_HISTORY,
     INVERTER_EXPORT_IMPORT,
+    INVERTER_IMPORT_HISTORY,
     INVERTER_POWER,
     MIN_SCAN_INTERVAL,
     PV_PRODUCTION_FORECAST_TODAY,
@@ -51,6 +61,10 @@ from .const import (
     REMOTECONTROL_DURATION,
     REMOTECONTROL_MODE,
     REMOTECONTROL_POWER,
+    SECOND_HOME_MODE_FULL,
+    SECOND_HOME_MODE_SURPLUS,
+    SECOND_HOME_MODE_VIEW,
+    SECOND_HOME_SENSOR,
     SPOT_MARKET_TODAY_ORDER,
     SPOT_MARKET_TOMORROW_ORDER,
 )
@@ -131,11 +145,27 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         self.heater_type = config_entry.data.get(CONF_HEATER_TYPE, "")
         self.heater_power = config_entry.data.get(CONF_HEATER_POWER, 0.0)  # kW
         self.heater_volume = config_entry.data.get(CONF_HEATER_VOLUME, 0)  # liters
-        self.buy_price = json.loads(config_entry.data.get(CONF_ELECTRICITY_PRICE, "[]"))
+        self.buy_price = json.loads(
+            config_entry.data.get(
+                CONF_ELECTRICITY_PRICE,
+                "[6.7,6.7,6.7,6.7,4.0,4.0,4.0,4.0,6.7,6.7,6.7,6.7,6.7,6.7,6.7,4.0,4.0,4.0,4.0,6.7,6.7,6.7,6.7,6.7]",
+            )
+        )
+        self.buy_mode = config_entry.data.get(CONF_BUY_PRICE_MODE, BUY_PRICE_MODE_FIXED)
+        self.buy_distribution_cost = json.loads(
+            config_entry.data.get(CONF_BUY_DISTRIBUTION_COST, "[]")
+        )
+        self.second_home_mode = config_entry.data.get(
+            CONF_SECOND_HOME_MODE, SECOND_HOME_MODE_VIEW
+        )
+        self.integration_mode = config_entry.data.get(
+            CONF_INTEGRATION_MODE, INTEGRATION_MODE_OBSERVE
+        )
         self.heater_plan = []
         # set variables from options.  You need a default here incase options have not been set
         self.poll_interval = DEFAULT_PLAN_INTERVAL
         self.spot_array = SpotPriceArray()
+        self.cumulated_cost_saved = 0.0
 
         # Initialise DataUpdateCoordinator
         super().__init__(
@@ -345,56 +375,59 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
         # DEBUG
         # last_hour_production = {"key": [{"mean": solar[0]}]}
-        last_hour_production = self.solar_now - list(last_hour_production.values())[0][
-            0
-        ].get("mean")
-        await self.update_predictions(
-            self.hass,
-            "pv_production_correction",
-            last_hour_production,
-            SEASONS_BY_MONTH[month],
-            (hour - 1) % 24,
+        last_hour_production_mean = list(last_hour_production.values())[0][0].get(
+            "mean"
         )
+        if last_hour_production_mean is not None:
+            last_hour_production = float(self.solar_now) - last_hour_production_mean
+            await self.update_predictions(
+                self.hass,
+                "pv_production_correction",
+                last_hour_production,
+                SEASONS_BY_MONTH[month],
+                (hour - 1) % 24,
+            )
+
+        second_home_load = self.hass.data["second_home_load"]["data"][
+            SEASONS_BY_MONTH[month]
+        ]["values"].copy()  # load forecast W each hour
+
+        if self.second_home_mode == SECOND_HOME_MODE_FULL:
+            last_hour_second_home_load = await recorder.get_instance(
+                self.hass
+            ).async_add_executor_job(
+                statistics.get_last_statistics,
+                self.hass,
+                1,
+                SECOND_HOME_SENSOR,
+                False,
+                types,
+            )
+
+            last_hour_second_home_load = list(last_hour_second_home_load.values())[0][
+                0
+            ].get("mean")
+
+            await self.update_predictions(
+                self.hass,
+                "second_home_load",
+                last_hour_second_home_load,
+                SEASONS_BY_MONTH[month],
+                (hour - 1) % 24,
+            )
 
         self.solar_now = solar[0]
 
         var_solar = solar
         var_load = load[hour:] + load[:hour]  # rotate to start from current hour
+        var_second_load = (
+            second_home_load[hour:] + second_home_load[:hour]
+        )  # rotate to start from current hour
 
         for h in range(H):
             var_solar[h] /= 1000  # convert to kW
             var_load[h] /= 1000  # convert to kW
-
-        buy_price = [
-            6.7,
-            6.7,
-            6.7,
-            6.7,
-            4.0,
-            4.0,
-            4.0,
-            4.0,
-            6.7,
-            6.7,
-            6.7,
-            6.7,
-            6.7,
-            6.7,
-            6.7,
-            4.0,
-            4.0,
-            4.0,
-            4.0,
-            6.7,
-            6.7,
-            6.7,
-            6.7,
-            6.7,
-        ]  # price to import from grid
-        buy_price = self.buy_price
-        buy_price = (
-            buy_price[hour:] + buy_price[:hour]
-        )  # rotate to start from current hour
+            var_second_load[h] /= 1000  # convert to kW
 
         today_state = self.hass.states.get(self.today_order_entity)
         if today_state is None:
@@ -419,6 +452,20 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
         self.spot_array.build_array(today_order, tomorrow_order, has_tomorrow, hour)
         sell_price = list(self.spot_array.prices)  # price to export to grid
+
+        distribution_cost = (
+            self.buy_distribution_cost[hour:] + self.buy_distribution_cost[:hour]
+        )
+
+        if self.buy_mode == BUY_PRICE_MODE_FIXED:
+            buy_price = (
+                self.buy_price[hour:] + self.buy_price[:hour]
+            )  # rotate to start from current hour
+            buy_price = list(np.array(buy_price) + np.array(distribution_cost))
+        else:
+            buy_price = list(
+                np.array(self.spot_array.prices) + np.array(distribution_cost)
+            )  # price to import from grid
 
         # begin optimization model
         m = pulp.LpProblem("EnergyManagement", pulp.LpMinimize)
@@ -581,20 +628,23 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 >= -bat_capacity * pen_low_soc[t]
             )
 
-            m += obj_sum[t] == grid_import[t] * buy_price[t] * (
-                1 + 1.2 / buy_price[t]
-            ) - grid_export[t] * (sell_price[t] - min(buy_price))
+            m += obj_sum[t] == grid_import[t] * (buy_price[t] + 1.2) - grid_export[
+                t
+            ] * (sell_price[t] - min(buy_price))
 
             m += (
                 var_solar[t] + grid_import[t] + discharge[t]
                 == var_load[t]
+                + var_second_load[t]
                 + P_AC_el * v_AC[t]
                 + P_EWH * v_E_wh[t]
                 + charge[t]
                 + grid_export[t]
             )
 
-            m += var_solar[t] - charge[t] - var_load[t] >= -M * (1 - appliances[t])
+            m += var_solar[t] - charge[t] - var_load[t] - var_second_load[t] >= -M * (
+                1 - appliances[t]
+            )
             m += v_E_wh[t] * P_EWH + v_AC[t] * P_AC_el <= M * appliances[t]
 
         m += soc[H] >= soc_final_target
@@ -614,111 +664,149 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             m.solve, pulp.PULP_CBC_CMD(msg=False)
         )
 
-        schedule = {
-            "v_AC": [pulp.value(v_AC[t]) for t in range(H)],
-            "v_ewh": [pulp.value(v_E_wh[t]) for t in range(H)],
-            "pen_low_soc": [pulp.value(pen_low_soc[t]) for t in range(H)],
-            "obj_sum": [
-                pulp.value(
-                    grid_import[t] * buy_price[t] - grid_export[t] * sell_price[t]
+        if self.integration_mode == INTEGRATION_MODE_MANAGE:
+            schedule = {
+                "v_AC": [pulp.value(v_AC[t]) for t in range(H)],
+                "v_ewh": [pulp.value(v_E_wh[t]) for t in range(H)],
+                "pen_low_soc": [pulp.value(pen_low_soc[t]) for t in range(H)],
+                "obj_sum": [
+                    pulp.value(
+                        grid_import[t] * buy_price[t] - grid_export[t] * sell_price[t]
+                    )
+                    for t in range(H)
+                ],
+                "charge": [pulp.value(charge[t]) for t in range(H)],
+                "discharge": [pulp.value(discharge[t]) for t in range(H)],
+                "grid_import": [pulp.value(grid_import[t]) for t in range(H)],
+                "grid_export": [pulp.value(grid_export[t]) for t in range(H)],
+                "soc": [pulp.value(soc[t]) for t in range(H + 1)],
+            }
+
+            _LOGGER.info(pulp.LpStatus[m.status])
+            _LOGGER.info(schedule)
+
+            if m.status == pulp.LpStatusOptimal:
+                await self.hass.services.async_call(
+                    "select",
+                    "select_option",
+                    {
+                        "entity_id": REMOTECONTROL_MODE,
+                        "option": "Enabled Grid Control",
+                    },
+                    blocking=True,
                 )
-                for t in range(H)
-            ],
-            "charge": [pulp.value(charge[t]) for t in range(H)],
-            "discharge": [pulp.value(discharge[t]) for t in range(H)],
-            "grid_import": [pulp.value(grid_import[t]) for t in range(H)],
-            "grid_export": [pulp.value(grid_export[t]) for t in range(H)],
-            "soc": [pulp.value(soc[t]) for t in range(H + 1)],
-        }
 
-        _LOGGER.warning(pulp.LpStatus[m.status])
-        _LOGGER.warning(schedule)
+                # self.surplus = pulp.value(grid_export[0]) * 1000
 
-        if m.status == pulp.LpStatusOptimal:
-            await self.hass.services.async_call(
-                "select",
-                "select_option",
-                {
-                    "entity_id": REMOTECONTROL_MODE,
-                    "option": "Enabled Grid Control",
-                },
-                blocking=True,
-            )
-
-            self.surplus = pulp.value(grid_export[0]) * 1000
-
-            remotecontrol_power = int(
-                (
-                    pulp.value(grid_import[0])
-                    if pulp.value(grid[0]) == 1
-                    else -pulp.value(grid_export[0])
+                remotecontrol_power = int(
+                    (
+                        pulp.value(grid_import[0])
+                        if pulp.value(grid[0]) == 1
+                        else -pulp.value(grid_export[0])
+                    )
+                    * 1000
                 )
-                * 1000
+
+                if remotecontrol_power < 0 and sell_price[0] < 2 * min(buy_price):
+                    remotecontrol_power = 0
+
+                self.grid_access = False
+                if remotecontrol_power != 0:
+                    self.grid_access = True
+
+                await self.hass.services.async_call(
+                    "number",
+                    "set_value",
+                    {
+                        "entity_id": REMOTECONTROL_POWER,
+                        "value": remotecontrol_power,
+                    },
+                    blocking=True,
+                )
+
+                await self.hass.services.async_call(
+                    "number",
+                    "set_value",
+                    {"entity_id": REMOTECONTROL_DURATION, "value": 3600},
+                    blocking=True,
+                )
+
+                await self.hass.services.async_call(
+                    "button",
+                    "press",
+                    {"entity_id": INVERTER_EXPORT_IMPORT},
+                )
+
+                if self.heater != "":
+                    if pulp.value(v_E_wh[0]) > 0.5:
+                        await self.hass.services.async_call(
+                            "switch",
+                            "turn_on",
+                            {"entity_id": self.heater},
+                        )
+                    else:
+                        await self.hass.services.async_call(
+                            "switch",
+                            "turn_off",
+                            {"entity_id": self.heater},
+                        )
+
+                if self.ac != "":
+                    if pulp.value(v_AC[0]) > 0.5:
+                        await self.hass.services.async_call(
+                            "climate",
+                            "set_hvac_mode",
+                            {
+                                "entity_id": self.ac,
+                                "hvac_mode": "cool" if cool_mode is True else "heat",
+                            },
+                        )
+                    else:
+                        await self.hass.services.async_call(
+                            "climate",
+                            "set_hvac_mode",
+                            {
+                                "entity_id": self.ac,
+                                "hvac_mode": "off",
+                            },
+                        )
+        else:
+            last_hour_import = await recorder.get_instance(
+                self.hass
+            ).async_add_executor_job(
+                statistics.get_last_statistics,
+                self.hass,
+                1,
+                INVERTER_IMPORT_HISTORY,
+                False,
+                types,
             )
+            last_hour_import = list(last_hour_import.values())[0][0].get("mean")
+            if last_hour_import is not None:
+                self.cumulated_cost_saved += (
+                    float(last_hour_import) * buy_price[-1] / 1000
+                )
+            self.cumulated_cost_saved -= pulp.value(grid_import[0]) * buy_price[0]
 
-            if remotecontrol_power < 0 and sell_price[0] < 2 * min(buy_price):
-                remotecontrol_power = 0
-
-            self.grid_access = False
-            if remotecontrol_power != 0:
-                self.grid_access = True
-
-            await self.hass.services.async_call(
-                "number",
-                "set_value",
-                {
-                    "entity_id": REMOTECONTROL_POWER,
-                    "value": remotecontrol_power,
-                },
-                blocking=True,
+            last_hour_export = await recorder.get_instance(
+                self.hass
+            ).async_add_executor_job(
+                statistics.get_last_statistics,
+                self.hass,
+                1,
+                INVERTER_EXPORT_HISTORY,
+                False,
+                types,
             )
-
-            await self.hass.services.async_call(
-                "number",
-                "set_value",
-                {"entity_id": REMOTECONTROL_DURATION, "value": 3600},
-                blocking=True,
+            last_hour_export = list(last_hour_export.values())[0][0].get("mean")
+            if last_hour_export is not None:
+                self.cumulated_cost_saved -= (
+                    float(last_hour_export) * sell_price[0] / 1000
+                )
+            self.cumulated_cost_saved += pulp.value(grid_export[0]) * sell_price[0]
+            _LOGGER.info(
+                "Possible cumulative saved cost: %f CZK", self.cumulated_cost_saved
             )
-
-            await self.hass.services.async_call(
-                "button",
-                "press",
-                {"entity_id": INVERTER_EXPORT_IMPORT},
-            )
-
-            if self.heater != "":
-                if pulp.value(v_E_wh[0]) > 0.5:
-                    await self.hass.services.async_call(
-                        "switch",
-                        "turn_on",
-                        {"entity_id": self.heater},
-                    )
-                else:
-                    await self.hass.services.async_call(
-                        "switch",
-                        "turn_off",
-                        {"entity_id": self.heater},
-                    )
-
-            if self.ac != "":
-                if pulp.value(v_AC[0]) > 0.5:
-                    await self.hass.services.async_call(
-                        "climate",
-                        "set_hvac_mode",
-                        {
-                            "entity_id": self.ac,
-                            "hvac_mode": "cool" if cool_mode is True else "heat",
-                        },
-                    )
-                else:
-                    await self.hass.services.async_call(
-                        "climate",
-                        "set_hvac_mode",
-                        {
-                            "entity_id": self.ac,
-                            "hvac_mode": "off",
-                        },
-                    )
 
         # What is returned here is stored in self.data by the DataUpdateCoordinator
         return EnergyData("Energy Management Coordinator", load_now, self.solar_now)
@@ -741,6 +829,7 @@ class SecondHouseholdCoordinator(DataUpdateCoordinator):
         self.host = config_entry.data[CONF_SECOND_HOME_SERVER]
         self.api_key = config_entry.data[CONF_SECOND_HOME_API_KEY]
         self.device_id = config_entry.data[CONF_SECOND_HOME_DEVICE_ID]
+        self.mode = config_entry.data[CONF_SECOND_HOME_MODE]
 
         self.url = f"{self.host}/v2/devices/api/get?auth_key={self.api_key}"
         self.payload = {"ids": [self.device_id], "select": ["status"]}
@@ -784,7 +873,7 @@ class SecondHouseholdCoordinator(DataUpdateCoordinator):
             state=res["status"]["em:0"]["total_act_power"],
         )
 
-        if self.manager.grid_access is False:
+        """if self.mode == SECOND_HOME_MODE_SURPLUS and self.manager.grid_access is False:
             if self.manager.surplus > float(device.state) / 3600 * MIN_SCAN_INTERVAL:
                 await self.hass.services.async_call(
                     "number",
@@ -805,7 +894,18 @@ class SecondHouseholdCoordinator(DataUpdateCoordinator):
                         "value": 0,
                     },
                     blocking=True,
-                )
+                )"""
+
+        if self.mode == SECOND_HOME_MODE_FULL and self.manager.grid_access is False:
+            await self.hass.services.async_call(
+                "number",
+                "set_value",
+                {
+                    "entity_id": REMOTECONTROL_POWER,
+                    "value": -int(device.state),
+                },
+                blocking=True,
+            )
 
         return APIData("Second household Coordinator", device)
 

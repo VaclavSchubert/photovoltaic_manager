@@ -7,21 +7,25 @@
     },
     "error": {
       "cannot_connect": "Failed to connect to ShellyCloud",
-      "invalid_auth": "Invalid second household configuration",
+      "invalid_auth": "Invalid second household configuration - either all or none of the fields must be filled",
       "solax_invalid_state": "Solax entity is unavailable or in unknown state",
       "weather_invalid_state": "Weather entity is unavailable, in unknown state, or missing attributes",
       "appliance_noncontrollable": "One or more selected appliances are not controllable",
       "invalid_battery_settings": "Invalid battery settings",
       "invalid_heater_settings": "Invalid heater settings",
+      "second_home_mode_invalid": "Invalid Second Home config - average power must be > 0 for surplus or full charging modes",
       "unknown": "Unexpected error"
     },
     "step": {
       "user": {
         "title": "Configure Photovoltaic Manager",
         "data": {
+          "integration_mode": "Integration Mode",
+          "buy_price_mode": "Electricity Buy Price Rate",
+          "buy_distribution_cost": "Hourly Electricity Distribution Cost (JSON Array)",
           "electricity_price": "Hourly Electricity Import Prices (JSON Array)",
-          "min_soc": "Minimum State of Charge",
-          "max_soc": "Maximum State of Charge",
+          "min_soc": "Minimum State of Charge [%]",
+          "max_soc": "Maximum State of Charge [%]",
           "battery_capacity": "Battery Capacity [kWh]",
           "weather_forecast": "Entity of Weather Forecast",
           "air_conditioning": "Air Conditioning to Control (Optional)",
@@ -31,14 +35,19 @@
           "heater_power": "Heater Power [kW] (Optional)",
           "second_home_server": "Second Home Server (Optional)",
           "second_home_api_key": "Second Home API Key (Optional)",
-          "second_home_device_id": "Second Home Device ID (Optional)"
+          "second_home_device_id": "Second Home Device ID (Optional)",
+          "second_home_mode": "Second Home Charging Mode (Optional)",
+          "second_home_avg_power": "Second Home Average Charging Power [W] (Optional)"
         }
       },
       "reconfigure": {
         "data": {
+          "integration_mode": "Integration Mode",
+          "buy_price_mode": "Electricity Buy Price Rate",
+          "buy_distribution_cost": "Hourly Electricity Distribution Cost (JSON Array)",
           "electricity_price": "Hourly Electricity Import Prices (JSON Array)",
-          "min_soc": "Minimum State of Charge",
-          "max_soc": "Maximum State of Charge",
+          "min_soc": "Minimum State of Charge [%]",
+          "max_soc": "Maximum State of Charge [%]",
           "battery_capacity": "Battery Capacity [kWh]",
           "weather_forecast": "Entity of Weather Forecast",
           "air_conditioning": "Air Conditioning to Control (Optional)",
@@ -48,7 +57,9 @@
           "heater_power": "Heater Power [kW] (Optional)",
           "second_home_server": "Second Home Server (Optional)",
           "second_home_api_key": "Second Home API Key (Optional)",
-          "second_home_device_id": "Second Home Device ID (Optional)"
+          "second_home_device_id": "Second Home Device ID (Optional)",
+          "second_home_mode": "Second Home Charging Mode (Optional)",
+          "second_home_avg_power": "Second Home Average Charging Power [kW] (Optional)"
         }
       }
     }
@@ -57,6 +68,19 @@
     "heater_type": {
       "combi_heater": "Combi Heater (electric + gas, oil, ...)",
       "electric_heater": "Electric Heater"
+    },
+    "integration_mode": {
+      "observe": "See what this system can do",
+      "manage": "Manage energy flows in the household"
+    },
+    "buy_price_mode": {
+      "fixed": "Fixed Electricity Price",
+      "spot": "Spot Market Price"
+    },
+    "second_home_mode": {
+      "view": "View Only",
+      "surplus": "Surplus Charging",
+      "full": "Full Charging"
     }
   }
 }

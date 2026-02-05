@@ -22,6 +22,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
+    CONF_SECOND_HOME_AVG_POWER,
     CONF_SECOND_HOME_DEVICE_ID,
     HOUSEHOLD_CONSUMPTION,
     INVERTER_POWER,
@@ -101,6 +102,28 @@ async def async_load_predictor(hass: HomeAssistant):
         for hr in range(24):
             if hour["counts"][hr] > 0:
                 hour["values"][hr] /= hour["counts"][hr]
+
+    return data
+
+async def async_load_second_home_predictor(config_entry: ConfigEntry):
+    """Initialize second home predictor data."""
+    avg_power = config_entry.data.get(CONF_SECOND_HOME_AVG_POWER, 0.0)
+
+    data = {
+        "summer": {
+            "values": [avg_power for _ in range(24)],
+            "counts": [1 for _ in range(24)],
+        },
+        "fall": {"values": [avg_power for _ in range(24)], "counts": [1 for _ in range(24)]},
+        "winter": {
+            "values": [avg_power for _ in range(24)],
+            "counts": [1 for _ in range(24)],
+        },
+        "spring": {
+            "values": [avg_power for _ in range(24)],
+            "counts": [1 for _ in range(24)],
+        },
+    }
 
     return data
 
@@ -258,11 +281,13 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: MyConfigEntry) ->
     """Set up Custom Integration from a config entry."""
 
     inverter_power_state = hass.states.get(INVERTER_POWER)
-    if inverter_power_state is None:
+    if inverter_power_state is None or inverter_power_state.state in {
+        "unavailable",
+        "unknown",
+    }:
         raise ConfigEntryNotReady("Solax not loaded yet, cannot start integration")
-    elif inverter_power_state.state in {"unavailable", "unknown"}:
-        raise ConfigEntryNotReady("Solax inverter power sensor is unavailable")
 
+    # House load data
     hass.data.setdefault("house_load_predictor", {})
     load_store = Store(hass, 1, "house_load_predictor")
 
@@ -276,6 +301,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: MyConfigEntry) ->
     hass.data["house_load_predictor"]["data"] = saved
     await load_store.async_save(saved)
 
+    # PV production correction data
     hass.data.setdefault("pv_production_correction", {})
     pv_store = Store(hass, 1, "pv_production_correction")
 
@@ -288,6 +314,20 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: MyConfigEntry) ->
 
     hass.data["pv_production_correction"]["data"] = saved
     await pv_store.async_save(saved)
+
+    # Second home load data
+    hass.data.setdefault("second_home_load", {})
+    second_home_store = Store(hass, 1, "second_home_load")
+
+    saved = await second_home_store.async_load() or {}
+
+    hass.data["second_home_load"]["store"] = second_home_store
+
+    if saved == {}:
+        saved = await async_load_second_home_predictor(config_entry)
+
+    hass.data["second_home_load"]["data"] = saved
+    await second_home_store.async_save(saved)
 
     # Initialise the coordinator that manages data updates from your api.
     # This is defined in coordinator.py
