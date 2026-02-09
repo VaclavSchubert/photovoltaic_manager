@@ -62,7 +62,6 @@ from .const import (
     REMOTECONTROL_MODE,
     REMOTECONTROL_POWER,
     SECOND_HOME_MODE_FULL,
-    SECOND_HOME_MODE_SURPLUS,
     SECOND_HOME_MODE_VIEW,
     SECOND_HOME_SENSOR,
     SPOT_MARKET_TODAY_ORDER,
@@ -137,6 +136,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         self.battery_current = float(self.hass.states.get(BATTERY_CURRENT_CHARGE).state)
         # parameters for optimization
         self.bat_capacity = config_entry.data.get(CONF_BATTERY_CAPACITY, 10.0)  # kWh
+        self.bat_power = self.battery_current * self.battery_voltage / 1000 * 0.5
         self.min_soc = config_entry.data.get(CONF_MIN_SOC, 10)  # %
         self.max_soc = config_entry.data.get(CONF_MAX_SOC, 90)  # %
         self.weather = config_entry.data.get(CONF_WEATHER_FORECAST, "")
@@ -165,7 +165,15 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         # set variables from options.  You need a default here incase options have not been set
         self.poll_interval = DEFAULT_PLAN_INTERVAL
         self.spot_array = SpotPriceArray()
-        self.cumulated_cost_saved = 0.0
+
+        if self.integration_mode == INTEGRATION_MODE_OBSERVE:
+            initial_soc_state = self.hass.states.get(self.initial_soc_entity)
+            if initial_soc_state is None:
+                raise UpdateFailed(f"Entity {self.initial_soc_entity} not found")
+            self.soc_simulation = (
+                float(initial_soc_state.state) / 100.0 * self.bat_capacity
+            )
+            self.cumulated_cost_saved = 0.0
 
         # Initialise DataUpdateCoordinator
         super().__init__(
@@ -187,15 +195,17 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
         solar_correction = self.hass.data["pv_production_correction"]["data"][
             SEASONS_BY_MONTH[month]
-        ]["values"]  # solar forecast W each hour
+        ]["values"]  # solar correcting array for each hour
 
         solar_prediction = await self.get_hourly_proportional_average(
             self.hass, self.forecast_pv_production_entity
-        )
+        )  # solar forecast for each hour
+
         if None in solar_prediction:
             raise UpdateFailed(
                 f"Not enough history data to compute solar prediction for {self.forecast_pv_production_entity}"
             )
+        # get hour 0 for initialization of integration
         self.solar_now = max(0, solar_prediction[0] - solar_correction[hour])
 
     async def update_predictions(
@@ -248,7 +258,6 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             except ValueError:
                 pass
 
-        # If nothing converted
         if not timeline:
             return [None] * hours
 
@@ -258,10 +267,10 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             # Insert synthetic starting point
             timeline.insert(0, (start_time, first_val))
 
-        # Add final synthetic endpoint at end_time
+        # Add final endpoint at end_time
         timeline.append((end_time, timeline[-1][1]))
 
-        # Now compute hourly proportional averages
+        # compute hourly proportional averages
         results = []
 
         for h in range(hours):
@@ -312,22 +321,24 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
         solar_correction = self.hass.data["pv_production_correction"]["data"][
             SEASONS_BY_MONTH[month]
-        ]["values"]  # solar forecast W each hour
+        ]["values"]  # solar correction array for each hour
 
         solar_prediction = await self.get_hourly_proportional_average(
             self.hass, self.forecast_pv_production_entity
-        )
+        )  # solar forecast for each hour
         if None in solar_prediction:
             raise UpdateFailed(
                 f"Not enough history data to compute solar prediction for {self.forecast_pv_production_entity}"
             )
 
+        # to make forecast more reliable, take the most recent prediction value
         current_pow = self.hass.states.get(PV_PRODUCTION_FORECAST_TODAY)
         if current_pow is None:
             raise UpdateFailed(f"Entity {PV_PRODUCTION_FORECAST_TODAY} not found")
 
         solar_prediction[0] = float(current_pow.state)
 
+        # prediction*0.9 - correction == better prediction (pessimistic prediction is better)
         solar = list(
             np.clip(
                 np.array(solar_prediction) * 0.9
@@ -347,9 +358,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             self.house_load_entity,
             False,
             types,
-        )
-        # DEBUG
-        # last_hour_load = {"key": [{"mean": load[hour]}]}
+        )  # load in last hour
 
         last_hour_load = list(last_hour_load.values())[0][0].get("mean")
         await self.update_predictions(
@@ -358,9 +367,9 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             last_hour_load,
             SEASONS_BY_MONTH[month],
             (hour - 1) % 24,
-        )
+        )  # update the load prediction array
 
-        load_now = load[hour]
+        load_now = load[hour]  # for sensor
 
         last_hour_production = await recorder.get_instance(
             self.hass
@@ -373,8 +382,6 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             types,
         )
 
-        # DEBUG
-        # last_hour_production = {"key": [{"mean": solar[0]}]}
         last_hour_production_mean = list(last_hour_production.values())[0][0].get(
             "mean"
         )
@@ -386,12 +393,13 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 last_hour_production,
                 SEASONS_BY_MONTH[month],
                 (hour - 1) % 24,
-            )
+            )  # correction is stored, so (prediction - real) is required
 
         second_home_load = self.hass.data["second_home_load"]["data"][
             SEASONS_BY_MONTH[month]
-        ]["values"].copy()  # load forecast W each hour
+        ]["values"].copy()  # load forecast of second home W each hour
 
+        # only matters for full second home load coverage
         if self.second_home_mode == SECOND_HOME_MODE_FULL:
             last_hour_second_home_load = await recorder.get_instance(
                 self.hass
@@ -416,7 +424,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 (hour - 1) % 24,
             )
 
-        self.solar_now = solar[0]
+        self.solar_now = solar[0]  # for sensor
 
         var_solar = solar
         var_load = load[hour:] + load[:hour]  # rotate to start from current hour
@@ -429,11 +437,14 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             var_load[h] /= 1000  # convert to kW
             var_second_load[h] /= 1000  # convert to kW
 
+        # data for spot price array
+        # today price
         today_state = self.hass.states.get(self.today_order_entity)
         if today_state is None:
             raise UpdateFailed(f"Entity {self.today_order_entity} not found")
         today_order = today_state.attributes
 
+        # if it has tomorrow data, retrieve that as well
         has_tomorrow_state = self.hass.states.get(self.has_tomorrow_entity)
         if has_tomorrow_state is None:
             raise UpdateFailed(f"Entity {self.has_tomorrow_entity} not found")
@@ -446,6 +457,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
         today_order = today_order.copy()
         tomorrow_order = tomorrow_order.copy()
+        # remove icon and hass name because it ruins calculation
         for key in ["icon", "friendly_name"]:
             today_order.pop(key, None)
             tomorrow_order.pop(key, None)
@@ -470,8 +482,9 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         # begin optimization model
         m = pulp.LpProblem("EnergyManagement", pulp.LpMinimize)
 
+        # Battery parameters
         bat_capacity = self.bat_capacity  # kWh
-        bat_power = self.battery_current * self.battery_voltage / 1000 * 0.5  # W
+        bat_power = self.bat_power  # W
         inverter_power = 9  # kW
         eff_charge = 0.97
         eff_discharge = 0.95
@@ -485,8 +498,6 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             * bat_capacity
         )  # kWh
 
-        # DEBUG
-        # Battery parameters
         inverter_power_state = self.hass.states.get(self.inverter_power)
         if inverter_power_state is None:
             raise UpdateFailed(f"Entity {self.inverter_power} not found")
@@ -496,8 +507,11 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Entity {self.initial_soc_entity} not found")
         soc_initial = float(initial_soc_state.state) / 100.0 * bat_capacity  # kWh
 
+        # high value so that it cannot be achieved by solver
+        # must be higher than big-M
         P_EWH = 10000.0
         P_AC_el = 10000.0
+        # AC default
         cool_mode = False
 
         # Decision variables
@@ -546,6 +560,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         if self.heater != "":
             P_EWH = self.heater_power
 
+            # heater is charged just from integration
             if self.heater_type == ELECTRIC_HEATER:
                 EWH_hours = (
                     self.heater_volume * 5 / self.heater_power / 100
@@ -556,12 +571,15 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                     m += pulp.lpSum(v_E_wh[t] for t in range(i, i + window_size)) <= 1
 
                 m += pulp.lpSum(v_E_wh[t] for t in range(H)) == EWH_hours
+
+            # turn heater on only from surplus energy
             elif self.heater_type == COMBI_HEATER:
                 for t in range(H):
                     m += grid_import[t] <= M * (1 - v_E_wh[t])
                     m += discharge[t] <= M * (1 - v_E_wh[t])
 
         if self.ac != "":
+            # AC electrical power doesnt matter too much, just rough estimate suffices
             P_AC_el = 1.1
 
             result = await self.hass.services.async_call(
@@ -589,37 +607,43 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             forecast = forecast_data["forecast"]
             P_amb = [f["temperature"] for f in forecast]
 
-            avg_temp = sum(P_amb) / len(P_amb)
+            # if its hot outside - cool mode
+            # if its cold outside - heat mode
+            peak_temp = max(P_amb)
 
             if avg_temp - 22 > 0:
                 cool_mode = True
 
+            # turn AC on only for surplus energy
             for t in range(H):
                 m += grid_import[t] <= M * (1 - v_AC[t])
                 m += discharge[t] <= M * (1 - v_AC[t])
 
-        # DEBUG
-        # Solar generation in kW, assuming a peak around midday
-        # var_solar = [max(0, float(np.sin(np.pi * t / H)) * 2.4) for t in range(H)]
-        # Load demand in kW, assuming a base load plus morning/evening peaks
-        # var_load = [np.random.normal(loc=0.5, scale=0.1) for t in range(H)]
-
-        m += soc[0] == soc_initial
+        # init battery SoC
+        if self.integration_mode == INTEGRATION_MODE_MANAGE:
+            m += soc[0] == soc_initial
+        else:
+            m += soc[0] == self.soc_simulation
 
         for t in range(H):
+            # export limited by solar production
+            # (czech law prohibits selling imported energy)
             m += grid_import[t] <= inverter_power * grid[t]
             m += grid_export[t] <= var_solar[t]
             m += grid_export[t] <= inverter_power * (1 - grid[t])
 
+            # charge from solar and grid
             m += charge[t] <= var_solar[t] + grid_import[t]
             m += charge[t] <= bat_power * battery[t]  # big-M linearization
             m += discharge[t] <= bat_power * (1 - battery[t])
 
+            # charging and discharging equation
             m += (
                 soc[t + 1]
                 == soc[t] + charge[t] * eff_charge - discharge[t] / eff_discharge
             )
 
+            # penalty for low SoC
             m += soc[t] - self.min_soc / 100 * bat_capacity <= bat_capacity * (
                 1 - pen_low_soc[t]
             )
@@ -628,10 +652,13 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 >= -bat_capacity * pen_low_soc[t]
             )
 
+            # objective function
+            # buy_price + 1.2 is to compensate for the reward for charging battery
             m += obj_sum[t] == grid_import[t] * (buy_price[t] + 1.2) - grid_export[
                 t
             ] * (sell_price[t] - min(buy_price))
 
+            # energy conservation equation
             m += (
                 var_solar[t] + grid_import[t] + discharge[t]
                 == var_load[t]
@@ -642,13 +669,16 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 + grid_export[t]
             )
 
+            # turn on appliance only after charging battery and convering load
             m += var_solar[t] - charge[t] - var_load[t] - var_second_load[t] >= -M * (
                 1 - appliances[t]
             )
             m += v_E_wh[t] * P_EWH + v_AC[t] * P_AC_el <= M * appliances[t]
 
+        # give solver some soft constraint regarding final SoC
         m += soc[H] >= soc_final_target
 
+        # objective function + penalty - bonus
         m += pulp.lpSum(
             [
                 obj_sum[t]
@@ -664,6 +694,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             m.solve, pulp.PULP_CBC_CMD(msg=False)
         )
 
+        # manage mode - control energy flow
         if self.integration_mode == INTEGRATION_MODE_MANAGE:
             schedule = {
                 "v_AC": [pulp.value(v_AC[t]) for t in range(H)],
@@ -682,9 +713,10 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 "soc": [pulp.value(soc[t]) for t in range(H + 1)],
             }
 
-            _LOGGER.info(pulp.LpStatus[m.status])
-            _LOGGER.info(schedule)
+            _LOGGER.debug(pulp.LpStatus[m.status])
+            _LOGGER.debug(schedule)
 
+            # only manipulate energy when values make sense
             if m.status == pulp.LpStatusOptimal:
                 await self.hass.services.async_call(
                     "select",
@@ -696,8 +728,6 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                     blocking=True,
                 )
 
-                # self.surplus = pulp.value(grid_export[0]) * 1000
-
                 remotecontrol_power = int(
                     (
                         pulp.value(grid_import[0])
@@ -706,9 +736,6 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                     )
                     * 1000
                 )
-
-                if remotecontrol_power < 0 and sell_price[0] < 2 * min(buy_price):
-                    remotecontrol_power = 0
 
                 self.grid_access = False
                 if remotecontrol_power != 0:
@@ -731,6 +758,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                     blocking=True,
                 )
 
+                # enable remotecontrol of inverter
                 await self.hass.services.async_call(
                     "button",
                     "press",
@@ -771,6 +799,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                             },
                         )
         else:
+            # observe mode - see how much money this integration can possibly save
             last_hour_import = await recorder.get_instance(
                 self.hass
             ).async_add_executor_job(
@@ -786,7 +815,12 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 self.cumulated_cost_saved += (
                     float(last_hour_import) * buy_price[-1] / 1000
                 )
+
             self.cumulated_cost_saved -= pulp.value(grid_import[0]) * buy_price[0]
+
+            self.soc_simulation += pulp.value(grid_import[0]) / 1000.0
+            self.soc_simulation -= last_hour_load / 1000.0
+            self.soc_simulation += last_hour_production / 1000.0
 
             last_hour_export = await recorder.get_instance(
                 self.hass
@@ -803,8 +837,9 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 self.cumulated_cost_saved -= (
                     float(last_hour_export) * sell_price[0] / 1000
                 )
+
             self.cumulated_cost_saved += pulp.value(grid_export[0]) * sell_price[0]
-            _LOGGER.info(
+            _LOGGER.debug(
                 "Possible cumulative saved cost: %f CZK", self.cumulated_cost_saved
             )
 
@@ -835,8 +870,6 @@ class SecondHouseholdCoordinator(DataUpdateCoordinator):
         self.payload = {"ids": [self.device_id], "select": ["status"]}
         self.headers = {"Content-Type": "application/json"}
         self.manager = scheduler
-
-        # set variables from options.  You need a default here incase options have not been set
         self.poll_interval = MIN_SCAN_INTERVAL
 
         # Initialise DataUpdateCoordinator
@@ -872,29 +905,6 @@ class SecondHouseholdCoordinator(DataUpdateCoordinator):
             name=res["code"],
             state=res["status"]["em:0"]["total_act_power"],
         )
-
-        """if self.mode == SECOND_HOME_MODE_SURPLUS and self.manager.grid_access is False:
-            if self.manager.surplus > float(device.state) / 3600 * MIN_SCAN_INTERVAL:
-                await self.hass.services.async_call(
-                    "number",
-                    "set_value",
-                    {
-                        "entity_id": REMOTECONTROL_POWER,
-                        "value": -int(device.state),
-                    },
-                    blocking=True,
-                )
-                self.manager.surplus -= float(device.state) / 3600 * MIN_SCAN_INTERVAL
-            else:
-                await self.hass.services.async_call(
-                    "number",
-                    "set_value",
-                    {
-                        "entity_id": REMOTECONTROL_POWER,
-                        "value": 0,
-                    },
-                    blocking=True,
-                )"""
 
         if self.mode == SECOND_HOME_MODE_FULL and self.manager.grid_access is False:
             await self.hass.services.async_call(
