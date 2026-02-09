@@ -25,9 +25,7 @@ BUY_PRICE_MODE_SPOT = "spot"
 
 # Second home modes
 SECOND_HOME_MODE_VIEW = "view"
-SECOND_HOME_MODE_SURPLUS = "surplus"
 SECOND_HOME_MODE_FULL = "full"
-
 
 # Required configuration keys
 # solax

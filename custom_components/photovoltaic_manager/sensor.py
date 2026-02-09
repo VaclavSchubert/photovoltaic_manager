@@ -1,4 +1,4 @@
-"""Interfaces with the Integration 101 Template api sensors."""
+"""Sensor of predictions and second household consumption."""
 
 import logging
 

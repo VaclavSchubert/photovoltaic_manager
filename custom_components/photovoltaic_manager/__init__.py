@@ -105,6 +105,7 @@ async def async_load_predictor(hass: HomeAssistant):
 
     return data
 
+
 async def async_load_second_home_predictor(config_entry: ConfigEntry):
     """Initialize second home predictor data."""
     avg_power = config_entry.data.get(CONF_SECOND_HOME_AVG_POWER, 0.0)
@@ -114,7 +115,10 @@ async def async_load_second_home_predictor(config_entry: ConfigEntry):
             "values": [avg_power for _ in range(24)],
             "counts": [1 for _ in range(24)],
         },
-        "fall": {"values": [avg_power for _ in range(24)], "counts": [1 for _ in range(24)]},
+        "fall": {
+            "values": [avg_power for _ in range(24)],
+            "counts": [1 for _ in range(24)],
+        },
         "winter": {
             "values": [avg_power for _ in range(24)],
             "counts": [1 for _ in range(24)],
