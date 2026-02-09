@@ -1,5 +1,7 @@
 # Photovoltaic Manager (Home Assistant Custom Integration)
 
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=VaclavSchubert&repository=photovoltaic_manager&category=integration)
+
 A Home Assistant custom integration that optimizes household energy flow using a **Mixed-Integer Linear Programming (MILP)** solver.
 
 The integration manages electricity import and export from the grid based on:
