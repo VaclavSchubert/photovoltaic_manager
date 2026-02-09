@@ -2,8 +2,7 @@
   "config": {
     "title": "Photovoltaic Manager",
     "abort": {
-      "already_configured": "Device is already configured",
-      "reconfigure_successful": "Reconfiguration successful"
+      "already_configured": "Device is already configured"
     },
     "error": {
       "cannot_connect": "Failed to connect to ShellyCloud",
@@ -22,65 +21,50 @@
         "data": {
           "integration_mode": "Integration Mode",
           "buy_price_mode": "Electricity Buy Price Rate",
-          "buy_distribution_cost": "Hourly Electricity Distribution Cost (JSON Array)",
-          "electricity_price": "Hourly Electricity Import Prices (JSON Array)",
+          "buy_distribution_cost": "Hourly Electricity Distribution Cost [JSON Array]",
+          "electricity_price": "Hourly Electricity Import Prices [JSON Array]",
           "min_soc": "Minimum State of Charge [%]",
           "max_soc": "Maximum State of Charge [%]",
           "battery_capacity": "Battery Capacity [kWh]",
-          "weather_forecast": "Entity of Weather Forecast",
-          "air_conditioning": "Air Conditioning to Control (Optional)",
-          "heater_entity": "Heater Entity to Control (Optional)",
-          "heater_type": "Heater Type (Optional)",
-          "heater_volume": "Heater Volume [l] (Optional)",
-          "heater_power": "Heater Power [kW] (Optional)",
-          "second_home_server": "Second Home Server (Optional)",
-          "second_home_api_key": "Second Home API Key (Optional)",
-          "second_home_device_id": "Second Home Device ID (Optional)",
-          "second_home_mode": "Second Home Charging Mode (Optional)",
-          "second_home_avg_power": "Second Home Average Charging Power [W] (Optional)"
-        }
-      },
-      "reconfigure": {
-        "data": {
-          "integration_mode": "Integration Mode",
-          "buy_price_mode": "Electricity Buy Price Rate",
-          "buy_distribution_cost": "Hourly Electricity Distribution Cost (JSON Array)",
-          "electricity_price": "Hourly Electricity Import Prices (JSON Array)",
-          "min_soc": "Minimum State of Charge [%]",
-          "max_soc": "Maximum State of Charge [%]",
-          "battery_capacity": "Battery Capacity [kWh]",
-          "weather_forecast": "Entity of Weather Forecast",
-          "air_conditioning": "Air Conditioning to Control (Optional)",
-          "heater_entity": "Heater Entity to Control (Optional)",
-          "heater_type": "Heater Type (Optional)",
-          "heater_volume": "Heater Volume [l] (Optional)",
-          "heater_power": "Heater Power [kW] (Optional)",
-          "second_home_server": "Second Home Server (Optional)",
-          "second_home_api_key": "Second Home API Key (Optional)",
-          "second_home_device_id": "Second Home Device ID (Optional)",
-          "second_home_mode": "Second Home Charging Mode (Optional)",
-          "second_home_avg_power": "Second Home Average Charging Power [kW] (Optional)"
+          "weather_forecast": "Entity of Weather Forecast (AC)",
+          "air_conditioning": "Air Conditioning to Control (AC)",
+          "heater_entity": "Heater Entity to Control (Heater)",
+          "heater_type": "Heater Type (Heater)",
+          "heater_volume": "Heater Volume [l] (Heater)",
+          "heater_power": "Heater Power [kW] (Heater)",
+          "second_home_server": "Second Home Server (Second Home)",
+          "second_home_api_key": "Second Home API Key (Second Home)",
+          "second_home_device_id": "Second Home Device ID (Second Home)",
+          "second_home_mode": "Second Home Management Mode (Second Home)",
+          "second_home_avg_power": "Second Home Average Hourly Load [W] (Second Home)"
         }
       }
     }
   },
-  "select": {
+  "selector": {
     "heater_type": {
-      "combi_heater": "Combi Heater (electric + gas, oil, ...)",
-      "electric_heater": "Electric Heater"
+      "options": {
+        "combi_heater": "Combi Heater (electric + gas, oil, ...)",
+        "electric_heater": "Electric Heater"
+      }
     },
     "integration_mode": {
-      "observe": "See what this system can do",
-      "manage": "Manage energy flows in the household"
+      "options": {
+        "observe": "See what this system can do",
+        "manage": "Manage energy flows in the household"
+      }
     },
     "buy_price_mode": {
-      "fixed": "Fixed Electricity Price",
-      "spot": "Spot Market Price"
+      "options": {
+        "fixed": "Fixed Electricity Price",
+        "spot": "Spot Market Price"
+      }
     },
     "second_home_mode": {
-      "view": "View Only",
-      "surplus": "Surplus Charging",
-      "full": "Full Charging"
+      "options": {
+        "view": "View Load Only",
+        "full": "Cover Load Completely"
+      }
     }
   }
 }
