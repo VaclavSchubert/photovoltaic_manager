@@ -1,4 +1,4 @@
-"""Config flow for Integration 101 Template integration."""
+"""Config flow for Photovoltaic Manager."""
 
 from __future__ import annotations
 
@@ -43,7 +43,6 @@ from .const import (
     INTEGRATION_MODE_OBSERVE,
     REAL_PV_PRODUCTION,
     SECOND_HOME_MODE_FULL,
-    SECOND_HOME_MODE_SURPLUS,
     SECOND_HOME_MODE_VIEW,
 )
 
@@ -141,7 +140,6 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             _validate_shelly, url, payload, headers
         )
 
-    # DEBUG: validate Solax entities exist and are available
     solax_state = hass.states.get(REAL_PV_PRODUCTION)
     if solax_state is None or solax_state.state in ("unknown", "unavailable"):
         raise SolaxInvalidState
@@ -210,7 +208,7 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                                 INTEGRATION_MODE_OBSERVE,
                                 INTEGRATION_MODE_MANAGE,
                             ],
-                            "translation_key": "integration_mode",
+                            "translation_key": CONF_INTEGRATION_MODE,
                             "multiple": False,
                         }
                     }
@@ -219,7 +217,7 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                     {
                         "select": {
                             "options": [BUY_PRICE_MODE_FIXED, BUY_PRICE_MODE_SPOT],
-                            "translation_key": "buy_price_mode",
+                            "translation_key": CONF_BUY_PRICE_MODE,
                             "multiple": False,
                         }
                     }
@@ -229,7 +227,7 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_MIN_SOC): vol.Coerce(int),
                 vol.Required(CONF_MAX_SOC): vol.Coerce(int),
                 vol.Required(CONF_BATTERY_CAPACITY): vol.Coerce(float),
-                vol.Required(CONF_WEATHER_FORECAST): selector(
+                vol.Optional(CONF_WEATHER_FORECAST): selector(
                     {
                         "entity": {
                             "domain": ["weather"],
@@ -259,7 +257,7 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                     {
                         "select": {
                             "options": [COMBI_HEATER, ELECTRIC_HEATER],
-                            "translation_key": "heater_type",
+                            "translation_key": CONF_HEATER_TYPE,
                             "multiple": False,
                         }
                     }
@@ -272,10 +270,9 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                         "select": {
                             "options": [
                                 SECOND_HOME_MODE_VIEW,
-                                SECOND_HOME_MODE_SURPLUS,
                                 SECOND_HOME_MODE_FULL,
                             ],
-                            "translation_key": "second_home_mode",
+                            "translation_key": CONF_SECOND_HOME_MODE,
                             "multiple": False,
                         }
                     }
@@ -286,178 +283,6 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
 
         # Show initial form.
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
-
-    async def async_step_reconfigure(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Add reconfigure step to allow to reconfigure a config entry."""
-        # This methid displays a reconfigure option in the integration and is
-        # different to options.
-        # It can be used to reconfigure any of the data submitted when first installed.
-        # This is optional and can be removed if you do not want to allow reconfiguration.
-        errors: dict[str, str] = {}
-        config_entry = self.hass.config_entries.async_get_entry(
-            self.context["entry_id"]
-        )
-
-        if config_entry is None:
-            raise Exception
-
-        if user_input is not None:
-            try:
-                await validate_input(self.hass, user_input)
-            except CannotConnect:
-                errors["base"] = "cannot_connect"
-            except InvalidAuth:
-                errors["base"] = "invalid_auth"
-            except SolaxInvalidState:
-                errors["base"] = "solax_invalid_state"
-            except WeatherInvalidState:
-                errors["base"] = "weather_invalid_state"
-            except ApplianceNoncontrollable:
-                errors["base"] = "appliance_noncontrollable"
-            except InvalidBatterySettings:
-                errors["base"] = "invalid_battery_settings"
-            except SecondHomeModeInvalid:
-                errors["base"] = "second_home_mode_invalid"
-            except Exception:  # pylint: disable=broad-except
-                _LOGGER.exception("Unexpected exception")
-                errors["base"] = "unknown"
-            else:
-                return self.async_update_reload_and_abort(
-                    config_entry,
-                    unique_id=config_entry.unique_id,
-                    data={**config_entry.data, **user_input},
-                    reason="reconfigure_successful",
-                )
-
-        schema = vol.Schema(
-            {
-                vol.Required(
-                    CONF_INTEGRATION_MODE,
-                    default=config_entry.data.get(CONF_INTEGRATION_MODE, "observe"),
-                ): selector(
-                    {
-                        "select": {
-                            "options": [
-                                INTEGRATION_MODE_OBSERVE,
-                                INTEGRATION_MODE_MANAGE,
-                            ],
-                            "translation_key": "integration_mode",
-                            "multiple": False,
-                        }
-                    }
-                ),
-                vol.Required(
-                    CONF_BUY_PRICE_MODE,
-                    default=config_entry.data.get(CONF_BUY_PRICE_MODE, "fixed"),
-                ): selector(
-                    {
-                        "select": {
-                            "options": [BUY_PRICE_MODE_FIXED, BUY_PRICE_MODE_SPOT],
-                            "translation_key": "buy_price_mode",
-                            "multiple": False,
-                        }
-                    }
-                ),
-                vol.Required(
-                    CONF_BUY_DISTRIBUTION_COST,
-                    default=config_entry.data.get(CONF_BUY_DISTRIBUTION_COST, ""),
-                ): cv.string,
-                vol.Required(
-                    CONF_ELECTRICITY_PRICE,
-                    default=config_entry.data.get(CONF_ELECTRICITY_PRICE, ""),
-                ): cv.string,
-                vol.Required(
-                    CONF_MIN_SOC,
-                    default=config_entry.data.get(CONF_MIN_SOC, 20),
-                ): vol.Coerce(int),
-                vol.Required(
-                    CONF_MAX_SOC, default=config_entry.data.get(CONF_MAX_SOC, 80)
-                ): vol.Coerce(int),
-                vol.Required(
-                    CONF_BATTERY_CAPACITY,
-                    default=config_entry.data.get(CONF_BATTERY_CAPACITY, 5.0),
-                ): vol.Coerce(float),
-                vol.Required(
-                    CONF_WEATHER_FORECAST,
-                    default=config_entry.data.get(CONF_WEATHER_FORECAST, ""),
-                ): selector(
-                    {
-                        "entity": {
-                            "domain": ["weather"],
-                            "multiple": False,
-                        }
-                    }
-                ),
-                vol.Optional(
-                    CONF_AIR_CONDITIONING,
-                ): selector(
-                    {
-                        "entity": {
-                            "domain": ["climate"],
-                            "multiple": False,
-                        }
-                    }
-                ),
-                vol.Optional(
-                    CONF_HEATER_ENTITY,
-                ): selector(
-                    {
-                        "entity": {
-                            "domain": ["switch"],
-                            "multiple": False,
-                        }
-                    }
-                ),
-                vol.Optional(CONF_HEATER_POWER): vol.Coerce(float),
-                vol.Optional(CONF_HEATER_VOLUME): vol.Coerce(int),
-                vol.Optional(CONF_HEATER_TYPE): selector(
-                    {
-                        "select": {
-                            "options": [COMBI_HEATER, ELECTRIC_HEATER],
-                            "translation_key": "heater_type",
-                            "multiple": False,
-                        }
-                    }
-                ),
-                vol.Optional(
-                    CONF_SECOND_HOME_SERVER,
-                ): cv.string,
-                vol.Optional(
-                    CONF_SECOND_HOME_API_KEY,
-                ): cv.string,
-                vol.Optional(
-                    CONF_SECOND_HOME_DEVICE_ID,
-                ): cv.string,
-                vol.Optional(
-                    CONF_SECOND_HOME_MODE,
-                    default=config_entry.data.get(CONF_SECOND_HOME_MODE, "view"),
-                ): selector(
-                    {
-                        "select": {
-                            "options": [
-                                SECOND_HOME_MODE_VIEW,
-                                SECOND_HOME_MODE_SURPLUS,
-                                SECOND_HOME_MODE_FULL,
-                            ],
-                            "translation_key": "second_home_mode",
-                            "multiple": False,
-                        }
-                    }
-                ),
-                vol.Optional(
-                    CONF_SECOND_HOME_AVG_POWER,
-                    default=config_entry.data.get(CONF_SECOND_HOME_AVG_POWER, 0.0),
-                ): vol.Coerce(float),
-            }
-        )
-
-        return self.async_show_form(
-            step_id="reconfigure",
-            data_schema=schema,
-            errors=errors,
-        )
 
 
 class CannotConnect(HomeAssistantError):
