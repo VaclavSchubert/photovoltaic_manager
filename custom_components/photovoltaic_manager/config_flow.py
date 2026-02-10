@@ -112,6 +112,18 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     except Exception:  # noqa: BLE001
         raise ApplianceNoncontrollable from Exception
 
+    if data[CONF_AIR_CONDITIONING] != "":
+        try:
+            weather = hass.states.get(data[CONF_WEATHER_FORECAST])
+            if (
+                weather is None
+                or weather.state in ("unknown", "unavailable")
+                or not weather.attributes
+            ):
+                raise WeatherInvalidState
+        except KeyError:
+            raise WeatherInvalidState
+
     shelly_fields = (
         CONF_SECOND_HOME_API_KEY,
         CONF_SECOND_HOME_DEVICE_ID,
@@ -143,14 +155,6 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     solax_state = hass.states.get(REAL_PV_PRODUCTION)
     if solax_state is None or solax_state.state in ("unknown", "unavailable"):
         raise SolaxInvalidState
-
-    weather = hass.states.get(data[CONF_WEATHER_FORECAST])
-    if (
-        weather is None
-        or weather.state in ("unknown", "unavailable")
-        or not weather.attributes
-    ):
-        raise WeatherInvalidState
 
     return {"title": "Energy Management Integration"}
 
