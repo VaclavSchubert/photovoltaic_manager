@@ -278,7 +278,7 @@ Settings → Devices & Services → Add Integration
 
 
 ## Notes
-
+* **IMPORTANT**: As the integration works on a hourly basis, grid import/export is also dependent on the start time of the integration (e.g. integration is initialized at 15:30, then the integration control will be aligned with the start time - at 15:30, 16:30, 17:30, ...). This can significantly effect the results. To achieve peak efficiency, initialize the integration at XX:00 or better yet - **after initialization, restart Home Assistant** because Forecast.Solar predictions are also dependent on start time.
 * Ensure all required dependent integrations are installed.
 * Price arrays must contain exactly 24 values.
 * All numeric inputs must match expected units.
@@ -294,6 +294,7 @@ logger:
 ```
 Settings -> Devices & Services -> Photovoltaic Manager -> Three dots (top right corner) -> Enable debug logging
 ```
+Subsequently, the output can be viewed in raw logs of the Home Assistant instance.
 
 ## Disclaimer
 
