@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -11,7 +12,7 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_registry as er, recorder
+from homeassistant.helpers import recorder
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.selector import selector
 
@@ -37,6 +38,7 @@ from .const import (
     CONF_SECOND_HOME_MODE,
     CONF_SECOND_HOME_SERVER,
     CONF_WEATHER_FORECAST,
+    CUSTOM_INTEGRATION_UNIQUE_ID,
     DOMAIN,
     ELECTRIC_HEATER,
     INTEGRATION_MODE_MANAGE,
@@ -63,6 +65,25 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
     Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
     """
+    buy_price = json.loads(data.get(CONF_ELECTRICITY_PRICE, "[]"))
+    buy_distribution_cost = json.loads(
+        data.get(
+            CONF_BUY_DISTRIBUTION_COST,
+            "[]",
+        )
+    )
+    if len(buy_price) != 24:
+        raise InvalidPriceArray
+    if len(buy_distribution_cost) != 24:
+        raise InvalidPriceArray
+
+    for price in buy_price:
+        if not isinstance(price, (int, float)):
+            raise InvalidPriceArray
+
+    for cost in buy_distribution_cost:
+        if not isinstance(cost, (int, float)):
+            raise InvalidPriceArray
 
     heater_fields = (
         CONF_HEATER_ENTITY,
@@ -104,7 +125,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         await hass.services.async_call(
             domain,
             "set_hvac_mode",
-            {"entity_id": data[CONF_AIR_CONDITIONING], "value": "off"},
+            {"entity_id": data[CONF_AIR_CONDITIONING], "hvac_mode": "off"},
             blocking=True,
         )
     except KeyError:
@@ -122,7 +143,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             ):
                 raise WeatherInvalidState
         except KeyError:
-            raise WeatherInvalidState
+            raise WeatherInvalidState from KeyError
 
     shelly_fields = (
         CONF_SECOND_HOME_API_KEY,
@@ -156,7 +177,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     if solax_state is None or solax_state.state in ("unknown", "unavailable"):
         raise SolaxInvalidState
 
-    return {"title": "Energy Management Integration"}
+    return {"title": CUSTOM_INTEGRATION_UNIQUE_ID}
 
 
 class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -193,6 +214,10 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "invalid_battery_settings"
             except SecondHomeModeInvalid:
                 errors["base"] = "second_home_mode_invalid"
+            except InvalidPriceArray:
+                errors["base"] = "invalid_price_array"
+            except InvalidHeaterSettings:
+                errors["base"] = "invalid_heater_settings"
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
@@ -200,6 +225,7 @@ class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
             if "base" not in errors:
                 # Validation was successful, so create a unique id for this instance of your integration
                 # and create the config entry.
+                await self.async_set_unique_id(info.get("title"))
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(title=info["title"], data=user_input)
 
@@ -319,3 +345,7 @@ class InvalidHeaterSettings(HomeAssistantError):
 
 class SecondHomeModeInvalid(HomeAssistantError):
     """Error to indicate second home mode is setup incorrectly."""
+
+
+class InvalidPriceArray(HomeAssistantError):
+    """Error to indicate price arrays are invalid."""
