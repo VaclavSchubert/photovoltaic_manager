@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 import logging
@@ -19,7 +18,6 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import recorder
 from homeassistant.helpers.device_registry import DeviceEntry
 from homeassistant.helpers.storage import Store
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
     CONF_SECOND_HOME_AVG_POWER,
@@ -85,15 +83,20 @@ async def async_load_predictor(hass: HomeAssistant):
     while True:
         try:
             item = next(iterable)
-            if item["mean"] < 0 or item["mean"] > 10000:
+            mean_value = item.get("mean", 0.0)
+            if mean_value is None:
                 continue  # Ignore invalid data
-            epoch_seconds = item["start"]
+            if mean_value < 0 or mean_value > 10000:
+                continue  # Ignore invalid data
+            epoch_seconds = item.get("start")
+            if epoch_seconds is None:
+                continue  # Ignore invalid data
             hour = datetime.fromtimestamp(
                 epoch_seconds, zoneinfo.ZoneInfo(hass.config.time_zone)
             ).hour
             season = await get_season_from_epoch(epoch_seconds, hemisphere)
 
-            data[season]["values"][hour] += item["mean"]
+            data[season]["values"][hour] += mean_value
             data[season]["counts"][hour] += 1
         except StopIteration:
             break
@@ -172,20 +175,25 @@ async def async_load_pv_predictor(hass: HomeAssistant):
     while True:
         try:
             item = next(iterable)
-            if item["mean"] < 0 or item["mean"] > 15000:
+            mean_value = item.get("mean", 0.0)
+            if mean_value is None:
                 continue  # Ignore invalid data
-            if item["mean"] == last_value and last_value != 0.0:
+            if mean_value < 0 or mean_value > 15000:
                 continue  # Ignore invalid data
-            epoch_seconds = item["start"]
+            if mean_value == last_value and last_value != 0.0:
+                continue  # Ignore invalid data
+            epoch_seconds = item.get("start")
+            if epoch_seconds is None:
+                continue  # Ignore invalid data
             hour = datetime.fromtimestamp(
                 epoch_seconds, zoneinfo.ZoneInfo(hass.config.time_zone)
             ).hour
             season = await get_season_from_epoch(epoch_seconds, hemisphere)
 
-            power_data[season]["values"][hour] += item["mean"]
+            power_data[season]["values"][hour] += mean_value
             power_data[season]["counts"][hour] += 1
 
-            last_value = item["mean"]
+            last_value = mean_value
         except StopIteration:
             break
 
@@ -226,19 +234,25 @@ async def async_load_pv_predictor(hass: HomeAssistant):
     while True:
         try:
             item = next(iterable)
-            if item["mean"] < 0 or item["mean"] > 15000:
+
+            mean_value = item.get("mean", 0.0)
+            if mean_value is None:
                 continue  # Ignore invalid data
-            if item["mean"] == last_value and last_value != 0.0:
+            if mean_value < 0 or mean_value > 15000:
                 continue  # Ignore invalid data
-            epoch_seconds = item["start"]
+            if mean_value == last_value and last_value != 0.0:
+                continue  # Ignore invalid data
+            epoch_seconds = item.get("start")
+            if epoch_seconds is None:
+                continue  # Ignore invalid data
             hour = datetime.fromtimestamp(
                 epoch_seconds, zoneinfo.ZoneInfo(hass.config.time_zone)
             ).hour
             season = await get_season_from_epoch(epoch_seconds, hemisphere)
 
-            predict_power_data[season]["values"][hour] += item["mean"]
+            predict_power_data[season]["values"][hour] += mean_value
             predict_power_data[season]["counts"][hour] += 1
-            last_value = item["mean"]
+            last_value = mean_value
         except StopIteration:
             break
 
@@ -377,5 +391,7 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: MyConfigEntry) -
     hass.data.pop("house_load_predictor", None)
     await hass.data["pv_production_correction"]["store"].async_remove()
     hass.data.pop("pv_production_correction", None)
+    await hass.data["second_home_load"]["store"].async_remove()
+    hass.data.pop("second_home_load", None)
     # Unload platforms and return result
     return await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)
