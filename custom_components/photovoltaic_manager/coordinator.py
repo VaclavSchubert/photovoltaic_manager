@@ -12,7 +12,7 @@ import pulp
 import requests
 
 from homeassistant.components.recorder import statistics
-from homeassistant.components.recorder.history import get_significant_states
+from homeassistant.components.recorder.history import State, get_significant_states
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import recorder
@@ -38,7 +38,6 @@ from .const import (
     CONF_MAX_SOC,
     CONF_MIN_SOC,
     CONF_SECOND_HOME_API_KEY,
-    CONF_SECOND_HOME_AVG_POWER,
     CONF_SECOND_HOME_DEVICE_ID,
     CONF_SECOND_HOME_MODE,
     CONF_SECOND_HOME_SERVER,
@@ -132,8 +131,14 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         self.house_load_entity = HOUSEHOLD_CONSUMPTION
         self.initial_soc_entity = BATTERY_STATUS
         self.inverter_power = INVERTER_POWER
-        self.battery_voltage = float(self.hass.states.get(BATTERY_VOLTAGE_CHARGE).state)
-        self.battery_current = float(self.hass.states.get(BATTERY_CURRENT_CHARGE).state)
+        battery_voltage_state = self.hass.states.get(BATTERY_VOLTAGE_CHARGE)
+        if battery_voltage_state is None:
+            raise UpdateFailed(f"Entity {BATTERY_VOLTAGE_CHARGE} not available")
+        battery_current_state = self.hass.states.get(BATTERY_CURRENT_CHARGE)
+        if battery_current_state is None:
+            raise UpdateFailed(f"Entity {BATTERY_CURRENT_CHARGE} not available")
+        self.battery_voltage = float(battery_voltage_state.state)
+        self.battery_current = float(battery_current_state.state)
         # parameters for optimization
         self.bat_capacity = config_entry.data.get(CONF_BATTERY_CAPACITY, 10.0)  # kWh
         self.bat_power = self.battery_current * self.battery_voltage / 1000 * 0.5
@@ -145,16 +150,21 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         self.heater_type = config_entry.data.get(CONF_HEATER_TYPE, "")
         self.heater_power = config_entry.data.get(CONF_HEATER_POWER, 0.0)  # kW
         self.heater_volume = config_entry.data.get(CONF_HEATER_VOLUME, 0)  # liters
+
+        self.buy_mode = config_entry.data.get(CONF_BUY_PRICE_MODE, BUY_PRICE_MODE_FIXED)
         self.buy_price = json.loads(
             config_entry.data.get(
                 CONF_ELECTRICITY_PRICE,
-                "[6.7,6.7,6.7,6.7,4.0,4.0,4.0,4.0,6.7,6.7,6.7,6.7,6.7,6.7,6.7,4.0,4.0,4.0,4.0,6.7,6.7,6.7,6.7,6.7]",
+                "[4.11,4.11,4.11,4.11,3.7,3.7,3.7,3.7,4.11,4.11,4.11,4.11,4.11,4.11,4.11,3.7,3.7,3.7,3.7,4.11,4.11,4.11,4.11,4.11]",
             )
         )
-        self.buy_mode = config_entry.data.get(CONF_BUY_PRICE_MODE, BUY_PRICE_MODE_FIXED)
         self.buy_distribution_cost = json.loads(
-            config_entry.data.get(CONF_BUY_DISTRIBUTION_COST, "[]")
+            config_entry.data.get(
+                CONF_BUY_DISTRIBUTION_COST,
+                "[2.57,2.57,2.57,2.57,0.27,0.27,0.27,0.27,2.57,2.57,2.57,2.57,2.57,2.57,2.57,0.27,0.27,0.27,0.27,2.57,2.57,2.57,2.57,2.57]",
+            )
         )
+
         self.second_home_mode = config_entry.data.get(
             CONF_SECOND_HOME_MODE, SECOND_HOME_MODE_VIEW
         )
@@ -253,6 +263,8 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         timeline = []
         for st in states:
             try:
+                if not isinstance(st, State):
+                    continue
                 v = float(st.state)
                 timeline.append((st.last_updated, v))
             except ValueError:
@@ -338,10 +350,10 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
         solar_prediction[0] = float(current_pow.state)
 
-        # prediction*0.9 - correction == better prediction (pessimistic prediction is better)
+        # prediction*0.95 - correction == better prediction (pessimistic prediction is better)
         solar = list(
             np.clip(
-                np.array(solar_prediction) * 0.9
+                np.array(solar_prediction) * 0.95
                 - np.array(solar_correction[hour:] + solar_correction[:hour]),
                 0,
                 None,
@@ -360,20 +372,25 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             types,
         )  # load in last hour
 
-        last_hour_load = list(last_hour_load.values())[0][0].get("mean")
-        await self.update_predictions(
-            self.hass,
-            "house_load_predictor",
-            last_hour_load,
-            SEASONS_BY_MONTH[month],
-            (hour - 1) % 24,
-        )  # update the load prediction array
+        try:
+            last_hour_load = list(last_hour_load.values())[0][0].get("mean")
+        except (IndexError, KeyError):
+            last_hour_load = None
+
+        if last_hour_load is not None:
+            await self.update_predictions(
+                self.hass,
+                "house_load_predictor",
+                last_hour_load,
+                SEASONS_BY_MONTH[month],
+                (hour - 1) % 24,
+            )  # update the load prediction array
 
         load_now = load[hour]  # for sensor
 
-        last_hour_production = await recorder.get_instance(
-            self.hass
-        ).async_add_executor_job(
+        last_hour_production_dict: dict[
+            str, list[statistics.StatisticsRow]
+        ] = await recorder.get_instance(self.hass).async_add_executor_job(
             statistics.get_last_statistics,
             self.hass,
             1,
@@ -382,9 +399,12 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             types,
         )
 
-        last_hour_production_mean = list(last_hour_production.values())[0][0].get(
-            "mean"
-        )
+        try:
+            last_hour_production_mean = list(last_hour_production_dict.values())[0][
+                0
+            ].get("mean")
+        except (IndexError, KeyError):
+            last_hour_production_mean = None
         if last_hour_production_mean is not None:
             last_hour_production = float(self.solar_now) - last_hour_production_mean
             await self.update_predictions(
@@ -412,17 +432,21 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 types,
             )
 
-            last_hour_second_home_load = list(last_hour_second_home_load.values())[0][
-                0
-            ].get("mean")
+            try:
+                last_hour_second_home_load = list(last_hour_second_home_load.values())[
+                    0
+                ][0].get("mean")
+            except (IndexError, KeyError):
+                last_hour_second_home_load = None
 
-            await self.update_predictions(
-                self.hass,
-                "second_home_load",
-                last_hour_second_home_load,
-                SEASONS_BY_MONTH[month],
-                (hour - 1) % 24,
-            )
+            if last_hour_second_home_load is not None:
+                await self.update_predictions(
+                    self.hass,
+                    "second_home_load",
+                    last_hour_second_home_load,
+                    SEASONS_BY_MONTH[month],
+                    (hour - 1) % 24,
+                )
 
         self.solar_now = solar[0]  # for sensor
 
@@ -605,13 +629,27 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 )
 
             forecast = forecast_data["forecast"]
-            P_amb = [f["temperature"] for f in forecast]
+            if not isinstance(forecast, list):
+                raise UpdateFailed(
+                    f"Invalid forecast data type in weather service response for {self.weather}"
+                )
+            P_amb = [
+                f["temperature"]
+                for f in forecast
+                if isinstance(f, dict)
+                and "temperature" in f
+                and isinstance(f["temperature"], (int, float))
+            ]
 
             # if its hot outside - cool mode
             # if its cold outside - heat mode
+            if len(P_amb) == 0:
+                raise UpdateFailed(
+                    f"No valid temperature data in weather forecast for {self.weather}"
+                )
             peak_temp = max(P_amb)
 
-            if avg_temp - 22 > 0:
+            if peak_temp - 22 > 0:
                 cool_mode = True
 
             # turn AC on only for surplus energy
@@ -737,6 +775,10 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                     * 1000
                 )
 
+                # prevent overcharing battery early when forecast is unreliable and battery is already quite full
+                if soc_initial > bat_capacity * 0.85 and remotecontrol_power > 0:
+                    remotecontrol_power = 0
+
                 self.grid_access = False
                 if remotecontrol_power != 0:
                     self.grid_access = True
@@ -810,7 +852,12 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 False,
                 types,
             )
-            last_hour_import = list(last_hour_import.values())[0][0].get("mean")
+
+            try:
+                last_hour_import = list(last_hour_import.values())[0][0].get("mean")
+            except (IndexError, KeyError):
+                last_hour_import = None
+
             if last_hour_import is not None:
                 self.cumulated_cost_saved += (
                     float(last_hour_import) * buy_price[-1] / 1000
@@ -819,6 +866,8 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             self.cumulated_cost_saved -= pulp.value(grid_import[0]) * buy_price[0]
 
             self.soc_simulation += pulp.value(grid_import[0]) / 1000.0
+            if last_hour_load is None:
+                last_hour_load = 0.0
             self.soc_simulation -= last_hour_load / 1000.0
             self.soc_simulation += last_hour_production / 1000.0
 
@@ -832,7 +881,10 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 False,
                 types,
             )
-            last_hour_export = list(last_hour_export.values())[0][0].get("mean")
+            try:
+                last_hour_export = list(last_hour_export.values())[0][0].get("mean")
+            except (IndexError, KeyError):
+                last_hour_export = None
             if last_hour_export is not None:
                 self.cumulated_cost_saved -= (
                     float(last_hour_export) * sell_price[0] / 1000
@@ -899,12 +951,17 @@ class SecondHouseholdCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error communicating with API: {err}") from err
 
         # What is returned here is stored in self.data by the DataUpdateCoordinator
-        res = response.json()[0]
-        device = Device(
-            device_id=res["id"],
-            name=res["code"],
-            state=res["status"]["em:0"]["total_act_power"],
-        )
+        res = response
+        try:
+            device = Device(
+                device_id=res["id"],
+                name=res["code"],
+                state=res["status"]["em:0"]["total_act_power"],
+            )
+        except KeyError as err:
+            raise UpdateFailed(
+                f"Unexpected API response structure: missing key {err}"
+            ) from err
 
         if self.mode == SECOND_HOME_MODE_FULL and self.manager.grid_access is False:
             await self.hass.services.async_call(
@@ -921,12 +978,25 @@ class SecondHouseholdCoordinator(DataUpdateCoordinator):
 
     def send_request(self, url, payload, headers):
         """Send request."""
-        return requests.post(
+
+        response = requests.post(
             url,
             json=payload,
             headers=headers,
             timeout=3,
         )
+
+        try:
+            response.raise_for_status()  # Raise an exception for HTTP errors
+        except requests.RequestException:
+            raise UpdateFailed(
+                f"API request failed with status code {response.status_code}: {response.text}"
+            ) from None
+
+        if not response.content:
+            raise UpdateFailed("API response is empty")
+
+        return response.json()[0]
 
 
 class SpotPriceArray:
