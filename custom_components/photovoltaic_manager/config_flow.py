@@ -65,13 +65,17 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
     Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
     """
-    buy_price = json.loads(data.get(CONF_ELECTRICITY_PRICE, "[]"))
-    buy_distribution_cost = json.loads(
-        data.get(
-            CONF_BUY_DISTRIBUTION_COST,
-            "[]",
+    try:
+        buy_price = json.loads(data.get(CONF_ELECTRICITY_PRICE, "[]"))
+        buy_distribution_cost = json.loads(
+            data.get(
+                CONF_BUY_DISTRIBUTION_COST,
+                "[]",
+            )
         )
-    )
+    except json.JSONDecodeError as e:
+        raise InvalidPriceArray from e
+
     if len(buy_price) != 24:
         raise InvalidPriceArray
     if len(buy_distribution_cost) != 24:
@@ -102,6 +106,9 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         raise InvalidBatterySettings
 
     try:
+        if any(heater_filled) and not all(heater_filled):
+            raise InvalidHeaterSettings
+
         domain, _ = data[CONF_HEATER_ENTITY].split(".", 1)
 
         await hass.services.async_call(
@@ -110,8 +117,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             {"entity_id": data[CONF_HEATER_ENTITY]},
             blocking=True,
         )
-        if any(heater_filled) and not all(heater_filled):
-            raise InvalidHeaterSettings
+
     except KeyError:
         data[CONF_HEATER_ENTITY] = ""
     except InvalidHeaterSettings:
@@ -163,7 +169,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             raise SecondHomeModeInvalid
 
         if data[CONF_SECOND_HOME_MODE] == SECOND_HOME_MODE_FULL:
-            if data[CONF_SECOND_HOME_AVG_POWER] <= 0:
+            if data[CONF_SECOND_HOME_AVG_POWER] < 0:
                 raise SecondHomeModeInvalid
 
         url = f"{data[CONF_SECOND_HOME_SERVER]}/v2/devices/api/get?auth_key={data[CONF_SECOND_HOME_API_KEY]}"
