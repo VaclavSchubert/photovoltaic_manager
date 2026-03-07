@@ -720,7 +720,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         m += pulp.lpSum(
             [
                 obj_sum[t]
-                + pen_low_soc[t]
+                + pen_low_soc[t] * 5
                 - charge[t] * 1.2
                 - v_E_wh[t] * 1.1
                 - v_AC[t]
@@ -800,12 +800,14 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                     blocking=True,
                 )
 
-                # enable remotecontrol of inverter
-                await self.hass.services.async_call(
-                    "button",
-                    "press",
-                    {"entity_id": INVERTER_EXPORT_IMPORT},
-                )
+                # prevent remotecontrol bottlenecking the power of PV
+                if soc_initial < bat_capacity * 0.97 or remotecontrol_power > 0:
+                    # enable remotecontrol of inverter
+                    await self.hass.services.async_call(
+                        "button",
+                        "press",
+                        {"entity_id": INVERTER_EXPORT_IMPORT},
+                    )
 
                 if self.heater != "":
                     if pulp.value(v_E_wh[0]) > 0.5:
