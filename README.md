@@ -282,18 +282,14 @@ Settings → Devices & Services → Add Integration
 * Ensure all required dependent integrations are installed.
 * Price arrays must contain exactly 24 values.
 * All numeric inputs must match expected units.
-* Debug logging can be enabled via:
+* Info logging can be enabled via:
 
 ```yaml
 logger:
   logs:
-    custom_components.photovoltaic_manager: debug
+    custom_components.photovoltaic_manager: info
 ```
-* or via (after the integration has been configured):
 
-```
-Settings -> Devices & Services -> Photovoltaic Manager -> Three dots (top right corner) -> Enable debug logging
-```
 Subsequently, the output can be viewed in raw logs of the Home Assistant instance.
 
 ## Disclaimer
