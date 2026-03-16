@@ -141,7 +141,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         self.battery_current = float(battery_current_state.state)
         # parameters for optimization
         self.bat_capacity = config_entry.data.get(CONF_BATTERY_CAPACITY, 10.0)  # kWh
-        self.bat_power = self.battery_current * self.battery_voltage / 1000 * 0.5
+        self.bat_power = self.battery_current * self.battery_voltage / 1000 * 0.6
         self.min_soc = config_entry.data.get(CONF_MIN_SOC, 10)  # %
         self.max_soc = config_entry.data.get(CONF_MAX_SOC, 90)  # %
         self.weather = config_entry.data.get(CONF_WEATHER_FORECAST, "")
@@ -348,7 +348,19 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         if current_pow is None:
             raise UpdateFailed(f"Entity {PV_PRODUCTION_FORECAST_TODAY} not found")
 
-        solar_prediction[0] = float(current_pow.state)
+        try:
+            solar_prediction[0] = float(current_pow.state)
+        except ValueError as e:
+            await self.hass.services.async_call(
+                    "number",
+                    "set_value",
+                    {
+                        "entity_id": REMOTECONTROL_POWER,
+                        "value": 0,
+                    },
+                    blocking=True,
+                )
+            raise UpdateFailed(f"Entity {PV_PRODUCTION_FORECAST_TODAY} not available") from e
 
         # prediction*0.95 - correction == better prediction (pessimistic prediction is better)
         solar = list(
@@ -525,7 +537,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         inverter_power_state = self.hass.states.get(self.inverter_power)
         if inverter_power_state is None:
             raise UpdateFailed(f"Entity {self.inverter_power} not found")
-        inverter_power = float(inverter_power_state.state) / 1000
+        inverter_power = float(inverter_power_state.state) / 1000 * 0.6
         initial_soc_state = self.hass.states.get(self.initial_soc_entity)
         if initial_soc_state is None:
             raise UpdateFailed(f"Entity {self.initial_soc_entity} not found")
@@ -664,10 +676,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             m += soc[0] == self.soc_simulation
 
         for t in range(H):
-            # export limited by solar production
-            # (czech law prohibits selling imported energy)
-            m += grid_import[t] <= inverter_power * grid[t]
-            m += grid_export[t] <= var_solar[t]
+            m += grid_import[t] <= inverter_power * grid[t] 
             m += grid_export[t] <= inverter_power * (1 - grid[t])
 
             # charge from solar and grid
@@ -751,8 +760,8 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 "soc": [pulp.value(soc[t]) for t in range(H + 1)],
             }
 
-            _LOGGER.debug(pulp.LpStatus[m.status])
-            _LOGGER.debug(schedule)
+            _LOGGER.info(pulp.LpStatus[m.status])
+            _LOGGER.info(schedule)
 
             # only manipulate energy when values make sense
             if m.status == pulp.LpStatusOptimal:
@@ -775,8 +784,15 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                     * 1000
                 )
 
-                # prevent overcharing battery early when forecast is unreliable and battery is already quite full
+                # prevent overcharging battery early when forecast is unreliable and battery is already quite full
                 if soc_initial > bat_capacity * 0.85 and remotecontrol_power > 0:
+                    remotecontrol_power = 0
+
+                # prevent export when it is past peak PV production and battery is quite low
+                if soc_initial < bat_capacity * 0.5 and remotecontrol_power < 0 and hour > 11:
+                    remotecontrol_power = 0
+
+                if sell_price[0] < 0 and remotecontrol_power < 0:
                     remotecontrol_power = 0
 
                 self.grid_access = False
