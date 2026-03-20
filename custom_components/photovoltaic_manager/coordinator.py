@@ -909,7 +909,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 )
 
             self.cumulated_cost_saved += pulp.value(grid_export[0]) * sell_price[0]
-            _LOGGER.debug(
+            _LOGGER.info(
                 "Possible cumulative saved cost: %f CZK", self.cumulated_cost_saved
             )
 
