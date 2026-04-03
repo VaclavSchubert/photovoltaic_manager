@@ -352,15 +352,17 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             solar_prediction[0] = float(current_pow.state)
         except ValueError as e:
             await self.hass.services.async_call(
-                    "number",
-                    "set_value",
-                    {
-                        "entity_id": REMOTECONTROL_POWER,
-                        "value": 0,
-                    },
-                    blocking=True,
-                )
-            raise UpdateFailed(f"Entity {PV_PRODUCTION_FORECAST_TODAY} not available") from e
+                "number",
+                "set_value",
+                {
+                    "entity_id": REMOTECONTROL_POWER,
+                    "value": 0,
+                },
+                blocking=True,
+            )
+            raise UpdateFailed(
+                f"Entity {PV_PRODUCTION_FORECAST_TODAY} not available"
+            ) from e
 
         # prediction*0.95 - correction == better prediction (pessimistic prediction is better)
         solar = list(
@@ -598,10 +600,10 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
             # heater is charged just from integration
             if self.heater_type == ELECTRIC_HEATER:
-                EWH_hours = (
+                EWH_hours = round(
                     self.heater_volume * 5 / self.heater_power / 100
                 )  # hours to heat water
-                window_size = 3
+                window_size = 3 if EWH_hours <= 8 else 1
 
                 for i in range(H - window_size + 1):
                     m += pulp.lpSum(v_E_wh[t] for t in range(i, i + window_size)) <= 1
@@ -676,7 +678,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             m += soc[0] == self.soc_simulation
 
         for t in range(H):
-            m += grid_import[t] <= inverter_power * grid[t] 
+            m += grid_import[t] <= inverter_power * grid[t]
             m += grid_export[t] <= inverter_power * (1 - grid[t])
 
             # charge from solar and grid
@@ -789,7 +791,11 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                     remotecontrol_power = 0
 
                 # prevent export when it is past peak PV production and battery is quite low
-                if soc_initial < bat_capacity * 0.5 and remotecontrol_power < 0 and hour > 11:
+                if (
+                    soc_initial < bat_capacity * 0.5
+                    and remotecontrol_power < 0
+                    and hour > 11
+                ):
                     remotecontrol_power = 0
 
                 if sell_price[0] < 0 and remotecontrol_power < 0:
@@ -817,7 +823,9 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 )
 
                 # prevent remotecontrol bottlenecking the power of PV
-                if remotecontrol_power > 0 or (soc_initial < bat_capacity * 0.97 and remotecontrol_power != 0) :
+                if remotecontrol_power > 0 or (
+                    soc_initial < bat_capacity * 0.97 and remotecontrol_power != 0
+                ):
                     # enable remotecontrol of inverter
                     await self.hass.services.async_call(
                         "button",

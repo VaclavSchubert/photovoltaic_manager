@@ -1,6 +1,7 @@
 """Tests for Photovoltaic Manager config flow."""
 
 from __future__ import annotations
+
 from unittest.mock import patch
 
 from custom_components.photovoltaic_manager.const import (
@@ -38,7 +39,6 @@ import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
-from homeassistant.exceptions import ConfigEntryNotReady
 
 # Test data constants
 VALID_PRICE_ARRAY = "[0.1, 0.2, 0.15, 0.18, 0.22, 0.25, 0.28, 0.3, 0.32, 0.3, 0.28, 0.25, 0.23, 0.2, 0.18, 0.15, 0.12, 0.1, 0.08, 0.06, 0.05, 0.04, 0.03, 0.02]"
