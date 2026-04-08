@@ -801,6 +801,9 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 if sell_price[0] < 0 and remotecontrol_power < 0:
                     remotecontrol_power = 0
 
+                if soc_initial < bat_capacity * 0.4 and remotecontrol_power < 0:
+                    remotecontrol_power = 0
+
                 self.grid_access = False
                 if remotecontrol_power != 0:
                     self.grid_access = True
@@ -823,7 +826,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 )
 
                 # prevent remotecontrol bottlenecking the power of PV
-                if remotecontrol_power > 0 or (
+                if remotecontrol_power > 0 or sell_price[0] < 0 or (
                     soc_initial < bat_capacity * 0.97 and remotecontrol_power != 0
                 ):
                     # enable remotecontrol of inverter
