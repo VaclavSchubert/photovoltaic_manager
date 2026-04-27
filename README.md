@@ -263,7 +263,7 @@ Settings → Devices & Services → Add Integration
 1. Copy this integration into:
 
 ```
-custom_components/your_integration/
+custom_components/photovoltaic_manager/
 ```
 
 2. Restart Home Assistant
