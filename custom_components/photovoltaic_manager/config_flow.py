@@ -187,7 +187,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
 
 class ManagerConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Example Integration."""
+    """Handle a config flow for Photovoltaic Manager Integration."""
 
     VERSION = 1
     _input_data: dict[str, Any]
