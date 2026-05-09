@@ -45,6 +45,7 @@ from .const import (
     DEFAULT_PLAN_INTERVAL,
     DOMAIN,
     ELECTRIC_HEATER,
+    EXPORT_CONTROL_USER_LIMIT,
     HAS_TOMORROW_SPOT_DATA,
     HOUSEHOLD_CONSUMPTION,
     INTEGRATION_MODE_MANAGE,
@@ -560,7 +561,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             "charge", range(H), lowBound=0, upBound=bat_power
         )
         discharge = pulp.LpVariable.dicts(
-            "discharge", range(H), lowBound=0, upBound=inverter_power * 0.6
+            "discharge", range(H), lowBound=0, upBound=bat_power
         )
         soc = pulp.LpVariable.dicts(
             "soc", range(H + 1), lowBound=0, upBound=bat_capacity
@@ -786,20 +787,44 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                     * 1000
                 )
 
+                if remotecontrol_power < 0:
+                    await self.hass.services.async_call(
+                        "number",
+                        "set_value",
+                        {
+                            "entity_id": EXPORT_CONTROL_USER_LIMIT,
+                            "value": int(self.hass.data["export_limit"]),
+                        },
+                        blocking=True,
+                    )
+
                 # prevent overcharging battery early when forecast is unreliable and battery is already quite full
-                if soc_initial > bat_capacity * 0.85 and remotecontrol_power > 0:
+                if (
+                    soc_initial > bat_capacity * 0.85
+                    and remotecontrol_power > 0
+                    and buy_price[0] > 0
+                ):
                     remotecontrol_power = 0
 
                 # prevent export when it is past peak PV production and battery is quite low
                 if (
-                    soc_initial < bat_capacity * 0.5
+                    soc_initial < bat_capacity * 0.6
                     and remotecontrol_power < 0
                     and hour > 11
                 ):
                     remotecontrol_power = 0
 
-                if sell_price[0] < 0 and remotecontrol_power < 0:
+                if sell_price[0] < 0 and remotecontrol_power <= 0:
                     remotecontrol_power = 0
+                    await self.hass.services.async_call(
+                        "number",
+                        "set_value",
+                        {
+                            "entity_id": EXPORT_CONTROL_USER_LIMIT,
+                            "value": 0,
+                        },
+                        blocking=True,
+                    )
 
                 if soc_initial < bat_capacity * 0.4 and remotecontrol_power < 0:
                     remotecontrol_power = 0
@@ -826,7 +851,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 )
 
                 # prevent remotecontrol bottlenecking the power of PV
-                if remotecontrol_power > 0 or sell_price[0] < 0 or (
+                if remotecontrol_power > 0 or (
                     soc_initial < bat_capacity * 0.97 and remotecontrol_power != 0
                 ):
                     # enable remotecontrol of inverter

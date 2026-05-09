@@ -22,6 +22,7 @@ from homeassistant.helpers.storage import Store
 from .const import (
     CONF_SECOND_HOME_AVG_POWER,
     CONF_SECOND_HOME_DEVICE_ID,
+    EXPORT_CONTROL_USER_LIMIT,
     HOUSEHOLD_CONSUMPTION,
     INVERTER_POWER,
     PLATFORMS,
@@ -305,6 +306,18 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: MyConfigEntry) ->
     }:
         raise ConfigEntryNotReady("Solax not loaded yet, cannot start integration")
 
+    export_limit_entity = hass.states.get(EXPORT_CONTROL_USER_LIMIT)
+    if export_limit_entity is None or export_limit_entity.state in {
+        "unavailable",
+        "unknown",
+    }:
+        raise ConfigEntryNotReady(
+            "Export control user limit not available, cannot start integration"
+        )
+
+    default_export_limit = export_limit_entity.state
+    hass.data.setdefault("export_limit", default_export_limit)
+
     # House load data
     hass.data.setdefault("house_load_predictor", {})
     load_store = Store(hass, 1, "house_load_predictor")
@@ -393,5 +406,17 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: MyConfigEntry) -
     hass.data.pop("pv_production_correction", None)
     await hass.data["second_home_load"]["store"].async_remove()
     hass.data.pop("second_home_load", None)
+
+    await hass.services.async_call(
+        "number",
+        "set_value",
+        {
+            "entity_id": EXPORT_CONTROL_USER_LIMIT,
+            "value": hass.data["export_limit"],
+        },
+        blocking=True,
+    )
+    hass.data.pop("export_limit", None)
+
     # Unload platforms and return result
     return await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)

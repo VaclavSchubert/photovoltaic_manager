@@ -42,6 +42,7 @@ BATTERY_VOLTAGE_CHARGE = "sensor.solax_battery_voltage_charge"
 BATTERY_CURRENT_CHARGE = "number.solax_battery_discharge_max_current"
 INVERTER_IMPORT_HISTORY = "sensor.solax_grid_import"
 INVERTER_EXPORT_HISTORY = "sensor.solax_grid_export"
+EXPORT_CONTROL_USER_LIMIT = "number.solax_export_control_user_limit"
 
 # forecast_solar
 PV_PRODUCTION_FORECAST_TODAY = "sensor.power_production_now"
