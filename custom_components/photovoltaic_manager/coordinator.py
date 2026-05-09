@@ -852,7 +852,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
                 # prevent remotecontrol bottlenecking the power of PV
                 if remotecontrol_power > 0 or (
-                    soc_initial < bat_capacity * 0.97 and remotecontrol_power != 0
+                    soc_initial < bat_capacity * 0.99 and remotecontrol_power != 0
                 ):
                     # enable remotecontrol of inverter
                     await self.hass.services.async_call(
