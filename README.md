@@ -282,6 +282,7 @@ Settings → Devices & Services → Add Integration
 * Ensure all required dependent integrations are installed.
 * Price arrays must contain exactly 24 values.
 * All numeric inputs must match expected units.
+* SolaX Inverter Charger Use Mode must be **Self Use Mode** and SolaX Inverter Manual Mode Control must be **Off** for remote control to take effect.
 * Info logging can be enabled via:
 
 ```yaml
