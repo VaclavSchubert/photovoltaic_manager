@@ -53,7 +53,6 @@ from .const import (
     INVERTER_EXPORT_HISTORY,
     INVERTER_EXPORT_IMPORT,
     INVERTER_IMPORT_HISTORY,
-    INVERTER_POWER,
     MIN_SCAN_INTERVAL,
     PV_PRODUCTION_FORECAST_TODAY,
     PV_PRODUCTION_FORECAST_TOMORROW,
@@ -131,7 +130,6 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         self.forecast_pv_production_entity = PV_PRODUCTION_FORECAST_TOMORROW
         self.house_load_entity = HOUSEHOLD_CONSUMPTION
         self.initial_soc_entity = BATTERY_STATUS
-        self.inverter_power = INVERTER_POWER
         battery_voltage_state = self.hass.states.get(BATTERY_VOLTAGE_CHARGE)
         if battery_voltage_state is None:
             raise UpdateFailed(f"Entity {BATTERY_VOLTAGE_CHARGE} not available")
@@ -537,10 +535,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             * bat_capacity
         )  # kWh
 
-        inverter_power_state = self.hass.states.get(self.inverter_power)
-        if inverter_power_state is None:
-            raise UpdateFailed(f"Entity {self.inverter_power} not found")
-        inverter_power = float(inverter_power_state.state) / 1000 * 0.6
+        inverter_power = float(self.hass.data["export_limit"]) / 1000 * 0.6
         initial_soc_state = self.hass.states.get(self.initial_soc_entity)
         if initial_soc_state is None:
             raise UpdateFailed(f"Entity {self.initial_soc_entity} not found")

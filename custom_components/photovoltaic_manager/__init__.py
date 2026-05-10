@@ -24,7 +24,6 @@ from .const import (
     CONF_SECOND_HOME_DEVICE_ID,
     EXPORT_CONTROL_USER_LIMIT,
     HOUSEHOLD_CONSUMPTION,
-    INVERTER_POWER,
     PLATFORMS,
     PV_PRODUCTION_FORECAST_TODAY,
     REAL_PV_PRODUCTION,
@@ -298,13 +297,6 @@ async def get_season_from_epoch(seconds, hemisphere="northern"):
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: MyConfigEntry) -> bool:
     """Set up Custom Integration from a config entry."""
-
-    inverter_power_state = hass.states.get(INVERTER_POWER)
-    if inverter_power_state is None or inverter_power_state.state in {
-        "unavailable",
-        "unknown",
-    }:
-        raise ConfigEntryNotReady("Solax not loaded yet, cannot start integration")
 
     export_limit_entity = hass.states.get(EXPORT_CONTROL_USER_LIMIT)
     if export_limit_entity is None or export_limit_entity.state in {
