@@ -782,7 +782,19 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                     * 1000
                 )
 
-                if remotecontrol_power < 0:
+                if abs(remotecontrol_power) < 1000:
+                    remotecontrol_power = 0
+
+                export_limit_entity = self.hass.states.get(EXPORT_CONTROL_USER_LIMIT)
+                if export_limit_entity is None or export_limit_entity.state in {
+                    "unavailable",
+                    "unknown",
+                }:
+                    raise UpdateFailed(
+                        "Export control user limit not available"
+                    )
+
+                if remotecontrol_power < 0 and export_limit_entity.state != self.hass.data["export_limit"]:
                     await self.hass.services.async_call(
                         "number",
                         "set_value",
@@ -809,7 +821,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 ):
                     remotecontrol_power = 0
 
-                if sell_price[0] < 0 and remotecontrol_power <= 0:
+                if sell_price[0] < 0 and int(export_limit_entity.state) != 0:
                     remotecontrol_power = 0
                     await self.hass.services.async_call(
                         "number",
@@ -847,7 +859,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
                 # prevent remotecontrol bottlenecking the power of PV
                 if remotecontrol_power > 0 or (
-                    soc_initial < bat_capacity * 0.99 and remotecontrol_power != 0
+                    (soc_initial < bat_capacity * 0.99 or hour > 17) and remotecontrol_power != 0
                 ):
                     # enable remotecontrol of inverter
                     await self.hass.services.async_call(
@@ -881,14 +893,24 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                             },
                         )
                     else:
-                        await self.hass.services.async_call(
-                            "climate",
-                            "set_hvac_mode",
-                            {
-                                "entity_id": self.ac,
-                                "hvac_mode": "off",
-                            },
-                        )
+                        ac_entity = self.hass.states.get(self.ac)
+                        if ac_entity is None or ac_entity.state in {
+                            "unavailable",
+                            "unknown",
+                        }:
+                            raise UpdateFailed(
+                                "AC not available"
+                            )
+
+                        if ac_entity.state != "off":
+                            await self.hass.services.async_call(
+                                "climate",
+                                "set_hvac_mode",
+                                {
+                                    "entity_id": self.ac,
+                                    "hvac_mode": "off",
+                                },
+                            )
         else:
             # observe mode - see how much money this integration can possibly save
             last_hour_import = await recorder.get_instance(
