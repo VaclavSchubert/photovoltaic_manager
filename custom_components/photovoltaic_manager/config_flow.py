@@ -131,7 +131,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         await hass.services.async_call(
             domain,
             "set_hvac_mode",
-            {"entity_id": data[CONF_AIR_CONDITIONING], "hvac_mode": "off"},
+            {"entity_id": data[CONF_AIR_CONDITIONING], "hvac_mode": "auto"},
             blocking=True,
         )
     except KeyError:
