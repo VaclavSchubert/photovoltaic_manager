@@ -522,7 +522,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         # Battery parameters
         bat_capacity = self.bat_capacity  # kWh
         bat_power = self.bat_power  # W
-        inverter_power = 9  # kW
+        inverter_power = 7000 if float(self.hass.data["export_limit"]) == 0 else float(self.hass.data["export_limit"])  # W
         eff_charge = 0.97
         eff_discharge = 0.95
         soc_initial = 8.65
@@ -535,7 +535,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             * bat_capacity
         )  # kWh
 
-        inverter_power = float(self.hass.data["export_limit"]) / 1000 * 0.6
+        inverter_power = inverter_power / 1000 * 0.6
         initial_soc_state = self.hass.states.get(self.initial_soc_entity)
         if initial_soc_state is None:
             raise UpdateFailed(f"Entity {self.initial_soc_entity} not found")
@@ -659,7 +659,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 )
             peak_temp = max(P_amb)
 
-            if peak_temp - 22 > 0:
+            if peak_temp - 24 > 0:
                 cool_mode = True
 
             # turn AC on only for surplus energy
@@ -782,7 +782,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                     * 1000
                 )
 
-                if abs(remotecontrol_power) < 1000:
+                if abs(remotecontrol_power) < 800:
                     remotecontrol_power = 0
 
                 export_limit_entity = self.hass.states.get(EXPORT_CONTROL_USER_LIMIT)
@@ -792,6 +792,20 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 }:
                     raise UpdateFailed(
                         "Export control user limit not available"
+                    )
+
+                if sell_price[0] < 0.01 and remotecontrol_power < 0:
+                    remotecontrol_power = 0
+
+                if sell_price[0] < 0.01 and int(export_limit_entity.state) != 0:
+                    await self.hass.services.async_call(
+                        "number",
+                        "set_value",
+                        {
+                            "entity_id": EXPORT_CONTROL_USER_LIMIT,
+                            "value": 0,
+                        },
+                        blocking=True,
                     )
 
                 if remotecontrol_power < 0 and export_limit_entity.state != self.hass.data["export_limit"]:
@@ -821,19 +835,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 ):
                     remotecontrol_power = 0
 
-                if sell_price[0] < 0 and int(export_limit_entity.state) != 0:
-                    remotecontrol_power = 0
-                    await self.hass.services.async_call(
-                        "number",
-                        "set_value",
-                        {
-                            "entity_id": EXPORT_CONTROL_USER_LIMIT,
-                            "value": 0,
-                        },
-                        blocking=True,
-                    )
-
-                if soc_initial < bat_capacity * 0.4 and remotecontrol_power < 0:
+                if soc_initial < bat_capacity * 0.3 and remotecontrol_power < 0:
                     remotecontrol_power = 0
 
                 self.grid_access = False
