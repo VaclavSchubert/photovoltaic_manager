@@ -7,6 +7,6 @@
     "documentation": "https://github.com/VaclavSchubert/photovoltaic_manager",
     "integration_type": "service",
     "iot_class": "cloud_polling",
-    "requirements": ["pulp"],
+    "requirements": ["PuLP>=3.0,<4.0"],
     "version": "0.1.0"
 }
