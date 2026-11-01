@@ -30,17 +30,17 @@ SECOND_HOME_MODE_FULL = "full"
 
 # Required configuration keys
 # solax
-REAL_PV_PRODUCTION = "sensor.solax_inverter_solax_pv_power_total"
-HOUSEHOLD_CONSUMPTION = "sensor.solax_inverter_solax_house_load"
-BATTERY_STATUS = "sensor.solax_inverter_solax_battery_capacity"
+REAL_PV_PRODUCTION = "sensor.solax_inverter_pv_power_total"
+HOUSEHOLD_CONSUMPTION = "sensor.solax_inverter_house_load"
+BATTERY_STATUS = "sensor.solax_inverter_battery_capacity"
 INVERTER_EXPORT_IMPORT = "button.solax_inverter_remotecontrol_trigger_mode_1_7"
 REMOTECONTROL_POWER = "number.solax_inverter_remotecontrol_active_power_mode_1"
 REMOTECONTROL_MODE = "select.solax_inverter_remotecontrol_power_control_mode_1"
 REMOTECONTROL_DURATION = "number.solax_inverter_remotecontrol_autorepeat_duration_mode_1_9"
-BATTERY_VOLTAGE_CHARGE = "sensor.solax_inverter_solax_battery_voltage_charge"
+BATTERY_VOLTAGE_CHARGE = "sensor.solax_inverter_battery_voltage_charge"
 BATTERY_CURRENT_CHARGE = "number.solax_inverter_battery_discharge_max_current"
-INVERTER_IMPORT_HISTORY = "sensor.solax_inverter_solax_grid_import"
-INVERTER_EXPORT_HISTORY = "sensor.solax_inverter_solax_grid_export"
+INVERTER_IMPORT_HISTORY = "sensor.solax_inverter_grid_import"
+INVERTER_EXPORT_HISTORY = "sensor.solax_inverter_grid_export"
 EXPORT_CONTROL_USER_LIMIT = "number.solax_inverter_export_control_user_limit"
 
 # forecast_solar
