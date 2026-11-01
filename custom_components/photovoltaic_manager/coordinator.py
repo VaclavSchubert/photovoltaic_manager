@@ -117,6 +117,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
     data: EnergyData
     surplus = 0.0
     grid_access = False
+    MIN_SOC = 0.8 # 80%
 
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry) -> None:
         """Initialize coordinator."""
@@ -183,6 +184,9 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 float(initial_soc_state.state) / 100.0 * self.bat_capacity
             )
             self.cumulated_cost_saved = 0.0
+
+        self.ac_scheduledval = ""
+        self.ac_resume_scheduling_counter = 0
 
         # Initialise DataUpdateCoordinator
         super().__init__(
@@ -782,7 +786,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                     * 1000
                 )
 
-                if abs(remotecontrol_power) < 800:
+                if abs(remotecontrol_power) < 1000:
                     remotecontrol_power = 0
 
                 export_limit_entity = self.hass.states.get(EXPORT_CONTROL_USER_LIMIT)
@@ -798,6 +802,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                     remotecontrol_power = 0
 
                 if sell_price[0] < 0.01 and int(export_limit_entity.state) != 0:
+                    _LOGGER.info("export limit set to zero")
                     await self.hass.services.async_call(
                         "number",
                         "set_value",
@@ -809,6 +814,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                     )
 
                 if remotecontrol_power < 0 and export_limit_entity.state != self.hass.data["export_limit"]:
+                    _LOGGER.info("export limit set to desired value" + str(self.hass.data["export_limit"]))
                     await self.hass.services.async_call(
                         "number",
                         "set_value",
@@ -835,8 +841,13 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 ):
                     remotecontrol_power = 0
 
-                if soc_initial < bat_capacity * 0.3 and remotecontrol_power < 0:
-                    remotecontrol_power = 0
+                
+                if remotecontrol_power < 0:
+                    next_hour_soc = soc_initial + remotecontrol_power/1000.0
+                    if next_hour_soc <= bat_capacity * self.MIN_SOC:
+                        remotecontrol_power = min(0, (bat_capacity * self.MIN_SOC - soc_initial)*1000)
+                        if abs(remotecontrol_power) < 1000:
+                            remotecontrol_power = 0
 
                 self.grid_access = False
                 if remotecontrol_power != 0:
@@ -861,7 +872,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
                 # prevent remotecontrol bottlenecking the power of PV
                 if remotecontrol_power > 0 or (
-                    (soc_initial < bat_capacity * 0.99 or hour > 17) and remotecontrol_power != 0
+                    (soc_initial < bat_capacity * 0.99 or hour > 16) and remotecontrol_power != 0
                 ):
                     # enable remotecontrol of inverter
                     await self.hass.services.async_call(
@@ -885,34 +896,43 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                         )
 
                 if self.ac != "":
-                    if pulp.value(v_AC[0]) > 0.5:
-                        await self.hass.services.async_call(
-                            "climate",
-                            "set_hvac_mode",
-                            {
-                                "entity_id": self.ac,
-                                "hvac_mode": "cool" if cool_mode is True else "heat",
-                            },
+                    ac_entity = self.hass.states.get(self.ac)
+                    if ac_entity is None or ac_entity.state in {
+                        "unavailable",
+                        "unknown",
+                    }:
+                        raise UpdateFailed(
+                            "AC not available"
                         )
-                    else:
-                        ac_entity = self.hass.states.get(self.ac)
-                        if ac_entity is None or ac_entity.state in {
-                            "unavailable",
-                            "unknown",
-                        }:
-                            raise UpdateFailed(
-                                "AC not available"
-                            )
+                    if ac_entity.state != self.ac_scheduledval and self.ac_resume_scheduling_counter == 0 and self.ac_scheduledval != "":
+                        self.ac_resume_scheduling_counter = 24
+                        self.ac_scheduledval = ""
 
-                        if ac_entity.state != "off":
+                    if self.ac_resume_scheduling_counter > 0:
+                        self.ac_resume_scheduling_counter = self.ac_resume_scheduling_counter - 1
+                    else:
+                        if pulp.value(v_AC[0]) > 0.5:
+                            ac_val = "cool" if cool_mode is True else "heat"
                             await self.hass.services.async_call(
                                 "climate",
                                 "set_hvac_mode",
                                 {
                                     "entity_id": self.ac,
-                                    "hvac_mode": "off",
+                                    "hvac_mode": ac_val,
                                 },
                             )
+                            self.ac_scheduledval = ac_val
+                        else:
+                            if ac_entity.state != "off":
+                                await self.hass.services.async_call(
+                                    "climate",
+                                    "set_hvac_mode",
+                                    {
+                                        "entity_id": self.ac,
+                                        "hvac_mode": "off",
+                                    },
+                                )
+                                self.ac_scheduledval = "off"
         else:
             # observe mode - see how much money this integration can possibly save
             last_hour_import = await recorder.get_instance(
