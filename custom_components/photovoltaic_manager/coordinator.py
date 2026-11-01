@@ -705,7 +705,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             # buy_price + 1.2 is to compensate for the reward for charging battery
             m += obj_sum[t] == grid_import[t] * (buy_price[t] + 1.2) - grid_export[
                 t
-            ] * (sell_price[t] - min(buy_price))
+            ] * (sell_price[t] - min(buy_price)) * (float(self.hass.data["export_limit"]) > 1)
 
             # energy conservation equation
             m += (
