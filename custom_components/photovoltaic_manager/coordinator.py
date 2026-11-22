@@ -117,7 +117,9 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
     data: EnergyData
     surplus = 0.0
     grid_access = False
-    MIN_SOC = 0.8 # 80%
+    MIN_SOC = 0.8 # 80% - state of charge after exporting
+    EXPORT_TENDENCY = 0 # 0% - no tendency to export
+    IMPORT_TENDENCY = 1 # 100% - integration is importing energy at 100% of its planned import
 
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry) -> None:
         """Initialize coordinator."""
@@ -142,8 +144,8 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         # parameters for optimization
         self.bat_capacity = config_entry.data.get(CONF_BATTERY_CAPACITY, 10.0)  # kWh
         self.bat_power = self.battery_current * self.battery_voltage / 1000 * 0.6
-        self.min_soc = config_entry.data.get(CONF_MIN_SOC, 10)  # %
-        self.max_soc = config_entry.data.get(CONF_MAX_SOC, 90)  # %
+        self.battery_min_soc = config_entry.data.get(CONF_MIN_SOC, 10)  # %
+        self.battery_max_soc = config_entry.data.get(CONF_MAX_SOC, 90)  # %
         self.weather = config_entry.data.get(CONF_WEATHER_FORECAST, "")
         self.ac = config_entry.data.get(CONF_AIR_CONDITIONING, "")
         self.heater = config_entry.data.get(CONF_HEATER_ENTITY, "")
@@ -187,6 +189,9 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
         self.ac_scheduledval = ""
         self.ac_resume_scheduling_counter = 0
+        self.min_soc = self.MIN_SOC
+        self.export_tendency = self.EXPORT_TENDENCY
+        self.import_tendency = self.IMPORT_TENDENCY
 
         # Initialise DataUpdateCoordinator
         super().__init__(
@@ -524,22 +529,21 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
         m = pulp.LpProblem("EnergyManagement", pulp.LpMinimize)
 
         # Battery parameters
-        bat_capacity = self.bat_capacity  # kWh
+        bat_capacity = self.bat_capacity*self.battery_max_soc / 100.0  # kWh
         bat_power = self.bat_power  # W
         inverter_power = 7000 if float(self.hass.data["export_limit"]) == 0 else float(self.hass.data["export_limit"])  # W
         eff_charge = 0.97
         eff_discharge = 0.95
-        soc_initial = 8.65
         soc_final_target = (
             (
-                self.min_soc
-                + (self.max_soc - self.min_soc) * (1 - np.sin(np.pi * month / 11) / 2)
+                self.battery_min_soc
+                + (self.battery_max_soc - self.battery_min_soc) * (1 - np.sin(np.pi * month / 11) / 2)
             )
             / 100
             * bat_capacity
         )  # kWh
 
-        inverter_power = inverter_power / 1000 * 0.6
+        inverter_power = inverter_power / 1000 * 0.3
         initial_soc_state = self.hass.states.get(self.initial_soc_entity)
         if initial_soc_state is None:
             raise UpdateFailed(f"Entity {self.initial_soc_entity} not found")
@@ -693,11 +697,11 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             )
 
             # penalty for low SoC
-            m += soc[t] - self.min_soc / 100 * bat_capacity <= bat_capacity * (
+            m += soc[t] - self.battery_min_soc / 100 * bat_capacity <= bat_capacity * (
                 1 - pen_low_soc[t]
             )
             m += (
-                soc[t] - self.min_soc / 100 * bat_capacity
+                soc[t] - self.battery_min_soc / 100 * bat_capacity
                 >= -bat_capacity * pen_low_soc[t]
             )
 
@@ -705,7 +709,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
             # buy_price + 1.2 is to compensate for the reward for charging battery
             m += obj_sum[t] == grid_import[t] * (buy_price[t] + 1.2) - grid_export[
                 t
-            ] * (sell_price[t] - min(buy_price)) * (float(self.hass.data["export_limit"]) > 1)
+            ] * (sell_price[t] - min(buy_price)) * (float(self.hass.data["export_limit"]) > 1) * self.export_tendency
 
             # energy conservation equation
             m += (
@@ -779,7 +783,7 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
 
                 remotecontrol_power = int(
                     (
-                        pulp.value(grid_import[0])
+                        pulp.value(grid_import[0])*self.import_tendency
                         if pulp.value(grid[0]) == 1
                         else -pulp.value(grid_export[0])
                     )
@@ -841,11 +845,11 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                 ):
                     remotecontrol_power = 0
 
-                
+
                 if remotecontrol_power < 0:
                     next_hour_soc = soc_initial + remotecontrol_power/1000.0
-                    if next_hour_soc <= bat_capacity * self.MIN_SOC:
-                        remotecontrol_power = min(0, (bat_capacity * self.MIN_SOC - soc_initial)*1000)
+                    if next_hour_soc <= bat_capacity * self.min_soc:
+                        remotecontrol_power = min(0, (bat_capacity * self.min_soc - soc_initial)*1000)
                         if abs(remotecontrol_power) < 1000:
                             remotecontrol_power = 0
 
@@ -880,6 +884,16 @@ class EnergyManagementCoordinator(DataUpdateCoordinator):
                         "press",
                         {"entity_id": INVERTER_EXPORT_IMPORT},
                     )
+                else:
+                    await self.hass.services.async_call(
+                    "number",
+                    "set_value",
+                    {
+                        "entity_id": REMOTECONTROL_POWER,
+                        "value": 0,
+                    },
+                    blocking=True,
+                )
 
                 if self.heater != "":
                     if pulp.value(v_E_wh[0]) > 0.5:
