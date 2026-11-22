@@ -6,7 +6,7 @@ DOMAIN = "photovoltaic_manager"
 CUSTOM_INTEGRATION_UNIQUE_ID = "Energy Management Integration"
 
 # Platforms (if your integration has multiple platforms like sensor, switch)
-PLATFORMS = [Platform.SENSOR]
+PLATFORMS = [Platform.SENSOR, Platform.NUMBER]
 
 DEFAULT_SCAN_INTERVAL = 7
 MIN_SCAN_INTERVAL = 14
